@@ -1,0 +1,34 @@
+# data
+data/
+
+# python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# tooling cache
+.pytest_cache/
+.mypy_cache/
+
+# virtual env
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# generated outputs
+output/
+wafer_sharpnessCheck/output/
+wafer_shiftCheck/batch_results/
+wafer_warpCheck/batch_results/
+
+# single-run generated files
+wafer_shiftCheck/shift_eval_dashboard.png
+wafer_warpCheck/warp_eval_dashboard.png
+wafer_warpCheck/sift_matches_debug.png
+
+# common reports/logs
+*.log

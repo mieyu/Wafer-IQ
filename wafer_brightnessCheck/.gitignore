@@ -1,0 +1,10 @@
+# 忽略不需要上传的文件夹
+brightness_2_results/
+brightness_3_results/
+brightness_4_results/
+brightness_1_results/
+data/
+
+# 可选：忽略 Python 缓存文件（推荐加）
+__pycache__/
+*.pyc
