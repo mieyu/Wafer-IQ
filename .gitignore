@@ -1,5 +1,6 @@
 # data
 data/
+output/
 
 # python cache
 __pycache__/

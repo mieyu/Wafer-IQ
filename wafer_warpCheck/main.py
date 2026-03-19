@@ -6,6 +6,7 @@
 import cv2
 import numpy as np
 from pathlib import Path
+import os
 import struct
 import yaml
 import random
@@ -82,61 +83,76 @@ def evaluate_warp_quality(image_a: np.ndarray, image_b: np.ndarray, overlap_leng
     return {**dist, **score, "_roi_a": roi_a, "_roi_b": roi_b}
 
 if __name__ == "__main__":
-    BASE_DIR = Path(__file__).parent
-    DATA_DIR = BASE_DIR.parent / "data" / "BF_2_Wafer"
-    YAML_FILE = DATA_DIR / "placements-BF.yml"
-    if not YAML_FILE.exists():
-        print(f"找不到配置: {YAML_FILE}"); exit()
+    BASE_DIR = Path(__file__).resolve().parent
+    WORKSPACE_DIR = BASE_DIR.parent.parent
+    data_root_dir = Path(os.getenv("WAFER_DATA_ROOT", WORKSPACE_DIR / "data")).expanduser().resolve()
+    output_root_dir = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
+    if not data_root_dir.exists():
+        print(f"data 目录不存在：{data_root_dir}")
+        exit()
+    dataset_dirs = sorted(path for path in data_root_dir.iterdir() if path.is_dir())
+    if not dataset_dirs:
+        print(f"未在 data 目录下找到数据集文件夹：{data_root_dir}")
+        exit()
     def hex_to_double(hx): return struct.unpack(">d", bytes.fromhex(hx))[0]
-    with open(YAML_FILE, "r") as f: meta = yaml.safe_load(f)
-    px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
-    overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
+    for dataset_dir in dataset_dirs:
+        dataset_name = dataset_dir.name
+        output_dir = output_root_dir / f"{dataset_name}_输出" / "形变翘曲检测"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        yaml_file = dataset_dir / "placements-BF.yml"
+        if not yaml_file.exists():
+            print(f"[{dataset_name}] 找不到配置: {yaml_file}")
+            continue
+        with open(yaml_file, "r") as f: meta = yaml.safe_load(f)
+        px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
+        overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
+        views = {tuple(int(i) for i in v["index"].split(",")): dataset_dir / v["filename"] for v in meta["views"]}
+        pairs = [ (views[(c,r)], views[(c+1,r)]) for c,r in sorted(views.keys()) if (c+1, r) in views and views[(c,r)].exists() and views[(c+1,r)].exists() ]
+        if not pairs:
+            print(f"[{dataset_name}] 无相邻图块！")
+            continue
+        p_a, p_b = random.choice(pairs)
+        print(f"[{dataset_name}] 随机抽取测试图块: {p_a.name} ↔ {p_b.name}")
+        img_a, img_b = cv2.imread(str(p_a), 0), cv2.imread(str(p_b), 0)
+        result = evaluate_warp_quality(img_a, img_b, overlap_px, "horizontal")
     
-    views = {tuple(int(i) for i in v["index"].split(",")): DATA_DIR / v["filename"] for v in meta["views"]}
-    pairs = [ (views[(c,r)], views[(c+1,r)]) for c,r in sorted(views.keys()) if (c+1, r) in views and views[(c,r)].exists() and views[(c+1,r)].exists() ]
-    if not pairs:
-        print("无相邻图块！"); exit()
+        print("─" * 55)
+        print("  晶圆畸变性评估 (单文件处理体验)")
+        print("─" * 55)
+        print(f"  特征匹配方法 : {result['distortion_method']}")
+        print(f"  内部点数     : {result['inliers']}")
+        print(f"  旋转角度     : {result['rotation_deg']:+.4f} °")
+        print(f"  切变量       : {result['shear']:+.4f}")
+        print(f"  ★ 畸变评分  : {result['distortion_score'] if result['distortion_score'] else 'N/A'}")
+        print("─" * 55)
+    
+        import matplotlib, matplotlib.pyplot as plt, matplotlib.gridspec as gs
+        matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']; matplotlib.rcParams['axes.unicode_minus'] = False
         
-    p_a, p_b = random.choice(pairs)
-    print(f"随机抽取测试图块: {p_a.name} ↔ {p_b.name}")
-    img_a, img_b = cv2.imread(str(p_a), 0), cv2.imread(str(p_b), 0)
-    result = evaluate_warp_quality(img_a, img_b, overlap_px, "horizontal")
-    
-    print("─" * 55)
-    print("  晶圆畸变性评估 (单文件处理体验)")
-    print("─" * 55)
-    print(f"  特征匹配方法 : {result['distortion_method']}")
-    print(f"  内部点数     : {result['inliers']}")
-    print(f"  旋转角度     : {result['rotation_deg']:+.4f} °")
-    print(f"  切变量       : {result['shear']:+.4f}")
-    print(f"  ★ 畸变评分  : {result['distortion_score'] if result['distortion_score'] else 'N/A'}")
-    print("─" * 55)
-    
-    import matplotlib, matplotlib.pyplot as plt, matplotlib.gridspec as gs
-    matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']; matplotlib.rcParams['axes.unicode_minus'] = False
-    
-    fig = plt.figure(figsize=(15, 6), facecolor="#1a1a2e")
-    grid = gs.GridSpec(1, 3, figure=fig, hspace=0.4, wspace=0.3, left=0.04, right=0.97, top=0.88, bottom=0.08)
-    def style(ax, t): ax.set_title(t, color="white", fontsize=10); ax.set_facecolor("#16213e"); ax.tick_params(colors="#666"); [sp.set_edgecolor("#0f3460") for sp in ax.spines.values()]
-    def sc_color(s): return "#2ecc71" if s>=85 else "#3498db" if s>=70 else "#f39c12" if s>=50 else "#e74c3c"
-    
-    scale = 800 / img_a.shape[0]; thumb_w = max(1, int(img_a.shape[1] * scale))
-    ta, tb = cv2.resize(img_a, (thumb_w, 800)), cv2.resize(img_b, (thumb_w, 800))
-    stitch_preview = np.hstack([ta, np.full((800, 2), 200, dtype=np.uint8), tb])
-    
-    ax1 = fig.add_subplot(grid[0, 0]); ax1.imshow(stitch_preview, cmap="gray")
-    style(ax1, f"完整全貌 (左:{p_a.name[:10]} 右:{p_b.name[:10]})")
-    ax2 = fig.add_subplot(grid[0, 1]); ax2.imshow(cv2.cvtColor(result["sift_match_img"], cv2.COLOR_BGR2RGB))
-    style(ax2, f"SIFT 匹配可视化 ({result['inliers']} inliers)"); ax2.axis('off')
-    ax3 = fig.add_subplot(grid[0, 2]); ax3.axis("off")
-    if result["distortion_score"]:
-        ax3.text(0.5, 0.7, f"{result['distortion_score']:.1f}", color=sc_color(result['distortion_score']), fontsize=32, ha="center")
-        ax3.text(0.5, 0.3, f"旋转角: {result['rotation_deg']:+.4f}°\n切变: {result['shear']:+.4f}", color="white", ha="center")
-    else:
-        ax3.text(0.5, 0.5, "N/A (特征提取失败)", color="#e74c3c", fontsize=24, ha="center")
-    style(ax3, "★ 畸变评分")
-    
-    fig.suptitle(f"畸变检测单文件结果 │ {p_a.name} ↔ {p_b.name}", color="white", fontsize=14, y=0.96)
-    plt.savefig(BASE_DIR / "warp_eval_dashboard.png", facecolor=fig.get_facecolor(), dpi=150)
-    cv2.imwrite(str(BASE_DIR / "sift_matches_debug.png"), result["sift_match_img"])
-    print(f"输出已保存至 {BASE_DIR}/warp_eval_dashboard.png 和 {BASE_DIR}/sift_matches_debug.png")
+        fig = plt.figure(figsize=(15, 6), facecolor="#1a1a2e")
+        grid = gs.GridSpec(1, 3, figure=fig, hspace=0.4, wspace=0.3, left=0.04, right=0.97, top=0.88, bottom=0.08)
+        def style(ax, t): ax.set_title(t, color="white", fontsize=10); ax.set_facecolor("#16213e"); ax.tick_params(colors="#666"); [sp.set_edgecolor("#0f3460") for sp in ax.spines.values()]
+        def sc_color(s): return "#2ecc71" if s>=85 else "#3498db" if s>=70 else "#f39c12" if s>=50 else "#e74c3c"
+        
+        scale = 800 / img_a.shape[0]; thumb_w = max(1, int(img_a.shape[1] * scale))
+        ta, tb = cv2.resize(img_a, (thumb_w, 800)), cv2.resize(img_b, (thumb_w, 800))
+        stitch_preview = np.hstack([ta, np.full((800, 2), 200, dtype=np.uint8), tb])
+        
+        ax1 = fig.add_subplot(grid[0, 0]); ax1.imshow(stitch_preview, cmap="gray")
+        style(ax1, f"完整全貌 (左:{p_a.name[:10]} 右:{p_b.name[:10]})")
+        ax2 = fig.add_subplot(grid[0, 1]); ax2.imshow(cv2.cvtColor(result["sift_match_img"], cv2.COLOR_BGR2RGB))
+        style(ax2, f"SIFT 匹配可视化 ({result['inliers']} inliers)"); ax2.axis('off')
+        ax3 = fig.add_subplot(grid[0, 2]); ax3.axis("off")
+        if result["distortion_score"]:
+            ax3.text(0.5, 0.7, f"{result['distortion_score']:.1f}", color=sc_color(result['distortion_score']), fontsize=32, ha="center")
+            ax3.text(0.5, 0.3, f"旋转角: {result['rotation_deg']:+.4f}°\n切变: {result['shear']:+.4f}", color="white", ha="center")
+        else:
+            ax3.text(0.5, 0.5, "N/A (特征提取失败)", color="#e74c3c", fontsize=24, ha="center")
+        style(ax3, "★ 畸变评分")
+        
+        fig.suptitle(f"畸变检测单文件结果 │ {p_a.name} ↔ {p_b.name}", color="white", fontsize=14, y=0.96)
+        output_dashboard = output_dir / "随机抽样对比示例.png"
+        output_match = output_dir / "随机抽样特征匹配.png"
+        plt.savefig(output_dashboard, facecolor=fig.get_facecolor(), dpi=150)
+        cv2.imwrite(str(output_match), result["sift_match_img"])
+        print(f"[{dataset_name}] 输出已保存至 {output_dashboard} 和 {output_match}")

@@ -33,6 +33,12 @@ METRIC_DISPLAY_NAMES = {
     "fft": "FFT 高频能量比",
     "brenner": "Brenner 梯度",
 }
+METRIC_FILE_NAMES = {
+    "laplacian": "Laplacian方差",
+    "tenengrad": "Tenengrad梯度能量",
+    "fft": "FFT高频能量比",
+    "brenner": "Brenner梯度",
+}
 
 
 def plot_heatmaps(grid_data: dict, output_dir: str) -> None:
@@ -86,7 +92,8 @@ def plot_heatmaps(grid_data: dict, output_dir: str) -> None:
         cbar.set_label(display_name, fontsize=10)
 
         fig.tight_layout()
-        save_path = output_path / f"heatmap_{metric_name}.png"
+        metric_file_name = METRIC_FILE_NAMES.get(metric_name, metric_name)
+        save_path = output_path / f"晶圆全景图_{metric_file_name}.png"
         fig.savefig(save_path, dpi=150)
         plt.close(fig)
         print(f"  已保存热图：{save_path}")
@@ -137,7 +144,7 @@ def plot_histograms(grid_data: dict, output_dir: str, bins: int = 50) -> None:
         ax.legend(fontsize=9)
 
     fig.tight_layout()
-    save_path = output_path / "histogram_all.png"
+    save_path = output_path / "随机抽样对比示例.png"
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  已保存直方图：{save_path}")

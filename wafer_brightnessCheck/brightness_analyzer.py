@@ -6,6 +6,7 @@
 """
 
 import re
+import os
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -14,6 +15,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+BASE_DIR = Path(__file__).resolve().parent
+WORKSPACE_DIR = BASE_DIR.parent.parent
+DATA_ROOT_DIR = Path(os.getenv("WAFER_DATA_ROOT", WORKSPACE_DIR / "data")).expanduser().resolve()
+OUTPUT_ROOT_DIR = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
 
 # 设置中文字体支持
 plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei"]
@@ -33,7 +39,7 @@ class BrightnessAnalyzer:
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.image_stats: list[Dict] = []
         self.grid_data: dict[str, float] = {}
@@ -169,7 +175,7 @@ class BrightnessAnalyzer:
         )
 
         # 保存统计数据
-        output_path = self.output_dir / "brightness_stats.csv"
+        output_path = self.output_dir / "明细数据.csv"
         self.df.to_csv(output_path, index=False)
         print(f"统计数据已保存至: {output_path}")
 
@@ -224,18 +230,23 @@ class BrightnessAnalyzer:
 
 def main():
     """主函数"""
-    # 配置参数
-    data_dir = r"data/BF_1_Wafer"
-    output_dir = "brightness_1_results"
+    if not DATA_ROOT_DIR.exists():
+        print(f"data 目录不存在：{DATA_ROOT_DIR}")
+        return
+    dataset_dirs = sorted(path for path in DATA_ROOT_DIR.iterdir() if path.is_dir())
+    if not dataset_dirs:
+        print(f"未在 data 目录下找到数据集文件夹：{DATA_ROOT_DIR}")
+        return
 
-    # 创建分析器
-    analyzer = BrightnessAnalyzer(data_dir, output_dir)
-
-    # 批量分析并生成CSV
-    analyzer.batch_analyze(pattern="0000_*.png")
+    for dataset_dir in dataset_dirs:
+        dataset_name = dataset_dir.name
+        output_dir = OUTPUT_ROOT_DIR / f"{dataset_name}_输出" / "亮度检测"
+        print(f"\n开始处理数据集：{dataset_name}")
+        analyzer = BrightnessAnalyzer(str(dataset_dir), str(output_dir))
+        analyzer.batch_analyze(pattern="0000_*.png")
 
     print("\n" + "=" * 60)
-    print("✓ 数据采集完成！CSV文件已生成")
+    print("✓ 数据采集完成！全部数据集CSV文件已生成")
     print("=" * 60)
     print("\n接下来请运行：")
     print("  1. python generate_report.py     # 计算指标和生成报告")

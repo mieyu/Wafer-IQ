@@ -5,12 +5,17 @@
 """
 
 import json
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+BASE_DIR = Path(__file__).resolve().parent
+WORKSPACE_DIR = BASE_DIR.parent.parent
+OUTPUT_ROOT_DIR = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
 
 # 设置样式
 sns.set_style("whitegrid")
@@ -31,17 +36,17 @@ class BrightnessVisualizer:
         """
         self.df = pd.read_csv(stats_csv)
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # 加载指标（如果存在）
-        metrics_path = self.output_dir / "metrics.json"
+        metrics_path = self.output_dir / "评分指标.json"
         if metrics_path.exists():
             with open(metrics_path, "r", encoding="utf-8") as f:
                 self.metrics = json.load(f)
         else:
             self.metrics = None
 
-    def generate_visualizations(self):
+    def generate_visualizations(self, show: bool = True):
         """
         生成可视化图表
         """
@@ -82,11 +87,14 @@ class BrightnessVisualizer:
         plt.tight_layout()
 
         # 保存图片
-        viz_path = self.output_dir / "brightness_analysis.png"
+        viz_path = self.output_dir / "晶圆全景图.png"
         plt.savefig(viz_path, dpi=300, bbox_inches="tight")
         print(f"可视化图表已保存至: {viz_path}")
 
-        plt.show()
+        if show:
+            plt.show()
+        else:
+            plt.close()
 
     def _plot_heatmap(self, ax, df):
         """绘制亮度热图"""
@@ -242,14 +250,26 @@ class BrightnessVisualizer:
 
 def main():
     """主函数"""
-    stats_csv = "brightness_1_results/brightness_stats.csv"
-    output_dir = "brightness_1_results"
+    if not OUTPUT_ROOT_DIR.exists():
+        print(f"output 目录不存在：{OUTPUT_ROOT_DIR}")
+        return
+    module_output_dirs = sorted(
+        path / "亮度检测"
+        for path in OUTPUT_ROOT_DIR.iterdir()
+        if path.is_dir() and path.name.endswith("_输出")
+    )
+    if not module_output_dirs:
+        print(f"未在 output 目录下找到 *_输出 目录：{OUTPUT_ROOT_DIR}")
+        return
 
-    viz = BrightnessVisualizer(stats_csv, output_dir)
-
-    # 生成可视化图表
-    viz.generate_visualizations()
-    print("✓ 可视化图表生成完成")
+    for module_output_dir in module_output_dirs:
+        stats_csv_path = module_output_dir / "明细数据.csv"
+        if not stats_csv_path.exists():
+            continue
+        print(f"\n开始生成亮度可视化：{module_output_dir.parent.name}")
+        viz = BrightnessVisualizer(str(stats_csv_path), str(module_output_dir))
+        viz.generate_visualizations(show=False)
+        print("✓ 可视化图表生成完成")
 
 
 if __name__ == "__main__":

@@ -4,14 +4,15 @@
 # 输出: batch_results/ 目录下的 CSV、热力图、仪表盘
 
 import struct, time, csv
+import os
 from pathlib import Path
 import cv2, numpy as np, yaml
 from main import evaluate_shift_quality
 
 BASE_DIR   = Path(__file__).parent
-DATA_DIR   = BASE_DIR.parent / "data" / "BF_1_Wafer"
-YAML_FILE  = DATA_DIR / "placements-BF.yml"
-OUTPUT_DIR = BASE_DIR / "batch_results"
+WORKSPACE_DIR = BASE_DIR.parent.parent
+DATA_ROOT_DIR = Path(os.getenv("WAFER_DATA_ROOT", WORKSPACE_DIR / "data")).expanduser().resolve()
+OUTPUT_ROOT_DIR = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
 
 def hex_to_double(hex_str: str) -> float:
     return struct.unpack(">d", bytes.fromhex(hex_str))[0]
@@ -81,12 +82,12 @@ def _save_batch_visualizations(pairs, results, output_dir):
     dx_vals = [r["dx"] for r in results]
     fig1, ax = plt.subplots(figsize=(fig_w, fig_h)); fig1.patch.set_facecolor(BG); ax.set_facecolor(PANEL)
     _draw_offset_heatmap(fig1, ax, grid_dx, f"X 方向偏移量 (Δx)  |  共 {n} 对  |  均值 {np.mean(dx_vals):+.3f}px")
-    plt.tight_layout(); fig1.savefig(output_dir / "heatmap_dx.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig1)
+    plt.tight_layout(); fig1.savefig(output_dir / "晶圆全景图_X方向偏移.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig1)
 
     dy_vals = [r["dy"] for r in results]
     fig2, ax = plt.subplots(figsize=(fig_w, fig_h)); fig2.patch.set_facecolor(BG); ax.set_facecolor(PANEL)
     _draw_offset_heatmap(fig2, ax, grid_dy, f"Y 方向偏移量 (Δy)  |  共 {n} 对  |  均值 {np.mean(dy_vals):+.3f}px")
-    plt.tight_layout(); fig2.savefig(output_dir / "heatmap_dy.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig2)
+    plt.tight_layout(); fig2.savefig(output_dir / "晶圆全景图_Y方向偏移.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig2)
 
     fig3 = plt.figure(figsize=(15, 11)); fig3.patch.set_facecolor(BG)
     gs = gridspec.GridSpec(2, 3, figure=fig3, hspace=0.45, wspace=0.35, left=0.05, right=0.97, top=0.90, bottom=0.07)
@@ -130,18 +131,21 @@ def _save_batch_visualizations(pairs, results, output_dir):
     style(ax6, "")
 
     fig3.suptitle(f"批量偏移评估面板 │ 共 {n} 对 │ 平均分 {np.mean(offset_scores):.1f}", color="white", fontsize=13, fontweight="bold", y=0.97)
-    fig3.savefig(output_dir / "score_dashboard.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig3)
+    fig3.savefig(output_dir / "晶圆全景图_评分总览.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig3)
 
-def main():
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    if not YAML_FILE.exists():
-        print(f"配置文件不存在: {YAML_FILE}")
+def _process_dataset(dataset_dir: Path) -> None:
+    dataset_name = dataset_dir.name
+    yaml_file = dataset_dir / "placements-BF.yml"
+    output_dir = OUTPUT_ROOT_DIR / f"{dataset_name}_输出" / "位置偏移检测"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if not yaml_file.exists():
+        print(f"[{dataset_name}] 配置文件不存在: {yaml_file}")
         return
-    with open(YAML_FILE, "r") as f: meta = yaml.safe_load(f)
+    with open(yaml_file, "r") as f: meta = yaml.safe_load(f)
     px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
     overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
 
-    views = {tuple(int(i) for i in v["index"].split(",")): DATA_DIR / v["filename"] for v in meta["views"]}
+    views = {tuple(int(i) for i in v["index"].split(",")): dataset_dir / v["filename"] for v in meta["views"]}
     coords = sorted(views.keys())
     pairs = []
     for c, r in coords:
@@ -149,10 +153,10 @@ def main():
             pairs.append(((c, r), (c + 1, r), views[(c, r)], views[(c + 1, r)]))
 
     if not pairs:
-        print("无匹配的相邻图块")
+        print(f"[{dataset_name}] 无匹配的相邻图块")
         return
 
-    csv_file, txt_file = OUTPUT_DIR / "shift_report.csv", OUTPUT_DIR / "shift_summary.txt"
+    csv_file, txt_file = output_dir / "明细数据.csv", output_dir / "评分报告.txt"
     headers = ["序号", "图块A", "图块B", "Col_A", "Row_A", "Col_B", "Row_B", "Δx", "Δy", "SSIM提升", "评分", "X子分", "Y子分", "异常"]
     results, t_start = [], time.time()
 
@@ -163,12 +167,24 @@ def main():
             ia, ib = cv2.imread(str(pa), 0), cv2.imread(str(pb), 0)
             if ia is None or ib is None: continue
             r = evaluate_shift_quality(ia, ib, overlap_px, "horizontal")
-            print(f"[{i}/{len(pairs)}] {pa.name} ↔ {pb.name} | 分数: {r['offset_score']:.1f} | Δx: {r['dx']:.2f}")
+            print(f"[{dataset_name}] [{i}/{len(pairs)}] {pa.name} ↔ {pb.name} | 分数: {r['offset_score']:.1f} | Δx: {r['dx']:.2f}")
             writer.writerow([i, pa.name, pb.name, ca[0], ca[1], cb[0], cb[1], r["dx"], r["dy"], r["ssim_delta"], r["offset_score"], r["score_dx"], r["score_dy"], "是" if r["phase_corr_suspicious"] else "否"])
             results.append(r)
 
-    print(f"\n评估完成，耗时 {time.time() - t_start:.1f}s")
-    _save_batch_visualizations(pairs, results, OUTPUT_DIR)
+    print(f"\n[{dataset_name}] 评估完成，耗时 {time.time() - t_start:.1f}s")
+    _save_batch_visualizations(pairs, results, output_dir)
+
+
+def main():
+    if not DATA_ROOT_DIR.exists():
+        print(f"data 目录不存在：{DATA_ROOT_DIR}")
+        return
+    dataset_dirs = sorted(path for path in DATA_ROOT_DIR.iterdir() if path.is_dir())
+    if not dataset_dirs:
+        print(f"未在 data 目录下找到数据集文件夹：{DATA_ROOT_DIR}")
+        return
+    for dataset_dir in dataset_dirs:
+        _process_dataset(dataset_dir)
 
 if __name__ == "__main__":
     main()

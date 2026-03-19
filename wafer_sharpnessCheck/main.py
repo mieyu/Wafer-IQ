@@ -6,18 +6,24 @@
     python main.py
 
 输出（保存在指定 output 目录）：
-    sharpness_results.csv       每张图块的四种清晰度指标值
-    sharpness_summary.log       四种指标的汇总统计数据
-    heatmap_*.png               4 张空间热图
-    histogram_all.png           四种指标分布直方图（合并为一张）
+    明细数据.csv                        每张图块的四种清晰度指标值
+    评分报告.txt                        四种指标的汇总统计数据
+    晶圆全景图_*.png                    4 张空间热图
+    随机抽样对比示例.png                四种指标分布直方图（合并为一张）
 """
 
 import logging
+import os
 from pathlib import Path
 
 from src.grid_mapper import build_grid
 from src.tile_scanner import scan_tiles
 from src.visualizer import plot_heatmaps, plot_histograms
+
+BASE_DIR = Path(__file__).resolve().parent
+WORKSPACE_DIR = BASE_DIR.parent.parent
+DATA_ROOT_DIR = Path(os.getenv("WAFER_DATA_ROOT", WORKSPACE_DIR / "data")).expanduser().resolve()
+OUTPUT_ROOT_DIR = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
 
 # 配置日志格式，方便查看运行进度
 logging.basicConfig(
@@ -42,7 +48,7 @@ def save_summary_log(df, output_path: Path) -> None:
 
     统计内容：图块总数、均值、标准差、最小值、最大值
     """
-    log_path = output_path / "sharpness_summary.log"
+    log_path = output_path / "评分报告.txt"
 
     lines = []
     lines.append("=" * 60)
@@ -92,51 +98,46 @@ def save_summary_log(df, output_path: Path) -> None:
 
 
 def main():
-    # ── 在此处修改输入/输出路径 ────────────────────────────────────────────
-    data_dir = "../data/clear"  # 分块图像所在目录
-    output_dir = "../output/clear"  # 结果输出目录
-    num_workers = 8  # 并行线程数
-
-    # ── 步骤 1：扫描图像目录，批量计算清晰度指标 ──────────────────────────
-    logger.info(f"[1/3] 扫描图像目录：{data_dir}")
-    records = scan_tiles(data_dir, num_workers=num_workers)
-
-    if not records:
-        logger.error("未找到任何有效图块，请检查路径和文件命名格式（0000_x_y.png）。")
+    if not DATA_ROOT_DIR.exists():
+        logger.error(f"data 目录不存在：{DATA_ROOT_DIR}")
+        return
+    dataset_dirs = sorted(path for path in DATA_ROOT_DIR.iterdir() if path.is_dir())
+    if not dataset_dirs:
+        logger.error(f"未在 data 目录下找到数据集文件夹：{DATA_ROOT_DIR}")
         return
 
-    # ── 步骤 2：将结果映射到虚拟二维网格 ────────────────────────────────────
-    logger.info("[2/3] 构建虚拟坐标网格...")
-    grid_data = build_grid(records)
+    num_workers = 8  # 并行线程数
+    for dataset_dir in dataset_dirs:
+        dataset_name = dataset_dir.name
+        output_path = OUTPUT_ROOT_DIR / f"{dataset_name}_输出" / "清晰度检测"
+        data_dir = str(dataset_dir)
 
-    df = grid_data["df"]
-    x_range = f"{df['x'].min()} ~ {df['x'].max()}"
-    y_range = f"{df['y'].min()} ~ {df['y'].max()}"
-    logger.info(
-        f"  网格尺寸：{len(grid_data['x_labels'])} × {len(grid_data['y_labels'])}  "
-        f"(x: {x_range},  y: {y_range})"
-    )
+        logger.info(f"[{dataset_name}] [1/3] 扫描图像目录：{data_dir}")
+        records = scan_tiles(data_dir, num_workers=num_workers)
+        if not records:
+            logger.error(f"[{dataset_name}] 未找到任何有效图块，跳过。")
+            continue
 
-    # ── 步骤 3：保存 CSV、统计日志，绘制热图和直方图 ────────────────────────
-    logger.info(f"[3/3] 保存结果到：{output_dir}")
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"[{dataset_name}] [2/3] 构建虚拟坐标网格...")
+        grid_data = build_grid(records)
+        df = grid_data["df"]
+        x_range = f"{df['x'].min()} ~ {df['x'].max()}"
+        y_range = f"{df['y'].min()} ~ {df['y'].max()}"
+        logger.info(
+            f"[{dataset_name}] 网格尺寸：{len(grid_data['x_labels'])} × {len(grid_data['y_labels'])}  "
+            f"(x: {x_range},  y: {y_range})"
+        )
 
-    # 保存逐块 CSV
-    csv_path = output_path / "sharpness_results.csv"
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    logger.info(f"  已保存 CSV：{csv_path}  ({len(df)} 行)")
+        logger.info(f"[{dataset_name}] [3/3] 保存结果到：{output_path}")
+        output_path.mkdir(parents=True, exist_ok=True)
+        csv_path = output_path / "明细数据.csv"
+        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        logger.info(f"[{dataset_name}] 已保存 CSV：{csv_path}  ({len(df)} 行)")
+        save_summary_log(df, output_path)
+        plot_heatmaps(grid_data, output_dir=str(output_path))
+        plot_histograms(grid_data, output_dir=str(output_path))
 
-    # 保存汇总统计日志
-    save_summary_log(df, output_path)
-
-    # 绘制四张空间热图
-    plot_heatmaps(grid_data, output_dir=str(output_path))
-
-    # 绘制四种指标合并直方图（一张图）
-    plot_histograms(grid_data, output_dir=str(output_path))
-
-    logger.info("✅ 全部完成！")
+    logger.info("✅ 全部数据集处理完成！")
 
 
 if __name__ == "__main__":

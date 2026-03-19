@@ -6,6 +6,7 @@
 import cv2
 import numpy as np
 from pathlib import Path
+import os
 import struct
 import yaml
 import random
@@ -118,80 +119,91 @@ def print_result(res: dict):
     print("─" * 55)
 
 if __name__ == "__main__":
-    BASE_DIR = Path(__file__).parent
-    DATA_DIR = BASE_DIR.parent / "data" / "BF_2_Wafer"
-    YAML_FILE = DATA_DIR / "placements-BF.yml"
-    if not YAML_FILE.exists():
-        print(f"找不到配置: {YAML_FILE}")
+    BASE_DIR = Path(__file__).resolve().parent
+    WORKSPACE_DIR = BASE_DIR.parent.parent
+    data_root_dir = Path(os.getenv("WAFER_DATA_ROOT", WORKSPACE_DIR / "data")).expanduser().resolve()
+    output_root_dir = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
+    if not data_root_dir.exists():
+        print(f"data 目录不存在：{data_root_dir}")
+        exit()
+    dataset_dirs = sorted(path for path in data_root_dir.iterdir() if path.is_dir())
+    if not dataset_dirs:
+        print(f"未在 data 目录下找到数据集文件夹：{data_root_dir}")
         exit()
     def hex_to_double(hx): return struct.unpack(">d", bytes.fromhex(hx))[0]
-    with open(YAML_FILE, "r") as f: meta = yaml.safe_load(f)
-    px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
-    overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
+    for dataset_dir in dataset_dirs:
+        dataset_name = dataset_dir.name
+        output_dir = output_root_dir / f"{dataset_name}_输出" / "位置偏移检测"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        yaml_file = dataset_dir / "placements-BF.yml"
+        if not yaml_file.exists():
+            print(f"[{dataset_name}] 找不到配置: {yaml_file}")
+            continue
+        with open(yaml_file, "r") as f: meta = yaml.safe_load(f)
+        px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
+        overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
+        views = {tuple(int(i) for i in v["index"].split(",")): dataset_dir / v["filename"] for v in meta["views"]}
+        coords = sorted(views.keys())
+        pairs = []
+        for (c, r) in coords:
+            if (c+1, r) in views and views[(c, r)].exists() and views[(c+1, r)].exists():
+                pairs.append((views[(c, r)], views[(c+1, r)]))
+        if not pairs:
+            print(f"[{dataset_name}] 无相邻图块！")
+            continue
+        p_a, p_b = random.choice(pairs)
+        print(f"[{dataset_name}] 随机抽取测试图块: {p_a.name} ↔ {p_b.name}")
+        img_a, img_b = cv2.imread(str(p_a), 0), cv2.imread(str(p_b), 0)
+        result = evaluate_shift_quality(img_a, img_b, overlap_px, "horizontal")
+        print_result(result)
     
-    views = {tuple(int(i) for i in v["index"].split(",")): DATA_DIR / v["filename"] for v in meta["views"]}
-    coords = sorted(views.keys())
-    pairs = []
-    for (c, r) in coords:
-        if (c+1, r) in views and views[(c, r)].exists() and views[(c+1, r)].exists():
-            pairs.append((views[(c, r)], views[(c+1, r)]))
-    
-    if not pairs:
-        print("无相邻图块！")
-        exit()
+        import matplotlib, matplotlib.pyplot as plt, matplotlib.gridspec as gs, matplotlib.patches as patches
+        matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']
+        matplotlib.rcParams['axes.unicode_minus'] = False
         
-    p_a, p_b = random.choice(pairs)
-    print(f"随机抽取测试图块: {p_a.name} ↔ {p_b.name}")
-    img_a, img_b = cv2.imread(str(p_a), 0), cv2.imread(str(p_b), 0)
-    result = evaluate_shift_quality(img_a, img_b, overlap_px, "horizontal")
-    print_result(result)
-    
-    import matplotlib, matplotlib.pyplot as plt, matplotlib.gridspec as gs, matplotlib.patches as patches
-    matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']
-    matplotlib.rcParams['axes.unicode_minus'] = False
-    
-    thumb_h = 800
-    scale = thumb_h / img_a.shape[0]
-    thumb_w = max(1, int(img_a.shape[1] * scale))
-    clahe = cv2.createCLAHE(2.0, (8,8))
-    ta, tb = clahe.apply(cv2.resize(img_a, (thumb_w, thumb_h))), clahe.apply(cv2.resize(img_b, (thumb_w, thumb_h)))
-    stitch_preview = np.hstack([ta, np.full((thumb_h, 2), 200, dtype=np.uint8), tb])
-    
-    h_roi = result["_roi_a"].shape[0]
-    cy = h_roi // 2
-    r1, r2 = max(0, cy - 400), max(0, cy - 400) + min(800, h_roi)
-    sa = clahe.apply(result["_roi_a"][r1:r2,:])
-    sb = clahe.apply(result["_roi_b"][r1:r2,:])
-    sbal = clahe.apply(result["roi_b_aligned"][r1:r2,:])
-    
-    fig = plt.figure(figsize=(18, 8), facecolor="#1a1a2e")
-    grid = gs.GridSpec(2, 4, figure=fig, hspace=0.4, wspace=0.3, left=0.04, right=0.97, top=0.88, bottom=0.08)
-    def style(ax, t): ax.set_title(t, color="white", fontsize=10); ax.set_facecolor("#16213e"); ax.tick_params(colors="#666"); [sp.set_edgecolor("#0f3460") for sp in ax.spines.values()]
-    def sc_color(s): return "#2ecc71" if s>=85 else "#3498db" if s>=70 else "#f39c12" if s>=50 else "#e74c3c"
-    
-    ax1 = fig.add_subplot(grid[0, 0:2]); ax1.imshow(stitch_preview, cmap="gray")
-    style(ax1, f"完整全貌 (左:{p_a.name} 右:{p_b.name})")
-    
-    ax2 = fig.add_subplot(grid[0, 2]); ax2.imshow(np.hstack([sa, sb]), cmap="gray")
-    ax2.axvline(sa.shape[1]-0.5, color="#f39c12", ls=":"); style(ax2, "ROI未对齐")
-    
-    ax3 = fig.add_subplot(grid[0, 3]); ax3.imshow(np.hstack([sa, sbal]), cmap="gray")
-    ax3.axvline(sa.shape[1]-0.5, color="#2ecc71", ls=":"); style(ax3, f"ROI对齐后 (Δx={result['dx']:.2f}, Δy={result['dy']:.2f})")
-    
-    ax4 = fig.add_subplot(grid[1, 0]); diff = cv2.absdiff(sa, sbal); im4 = ax4.imshow(diff, cmap="inferno", vmin=0, vmax=max(diff.max(),1))
-    plt.colorbar(im4, ax=ax4, fraction=0.05).ax.tick_params(colors="w"); style(ax4, "差异热图")
-    
-    ax5 = fig.add_subplot(grid[1, 1]); lim=max(abs(result['dx']), abs(result['dy']), 1)*1.5
-    ax5.set_xlim(-lim, lim); ax5.set_ylim(-lim, lim); ax5.axhline(0, color="#0f3460"); ax5.axvline(0, color="#0f3460")
-    ax5.annotate("", xy=(result['dx'], -result['dy']), xytext=(0,0), arrowprops=dict(arrowstyle="->", color="#e74c3c", lw=2))
-    style(ax5, "平移矢量表")
-    
-    ax6 = fig.add_subplot(grid[1, 2]); ax6.axis("off"); ax6.text(0.5, 0.7, f"{result['offset_score']:.1f}", color=sc_color(result['offset_score']), fontsize=32, ha="center")
-    ax6.text(0.5, 0.3, result['bias_direction'], color="white", ha="center"); style(ax6, "★ 评分")
-    
-    ax7 = fig.add_subplot(grid[1, 3]); ax7.axis("off"); ax7.text(0.5, 0.5, "SSIM 异常" if result['phase_corr_suspicious'] else "SSIM 正常", color="#e74c3c" if result['phase_corr_suspicious'] else "#2ecc71", fontsize=20, ha="center")
-    style(ax7, "SSIM验证")
-    
-    fig.suptitle(f"平移偏移检测单文件结果 │ {p_a.name} ↔ {p_b.name}", color="white", fontsize=14, y=0.96)
-    plt.savefig(BASE_DIR / "shift_eval_dashboard.png", facecolor=fig.get_facecolor(), dpi=150)
-    print(f"输出已保存至 {BASE_DIR}/shift_eval_dashboard.png")
+        thumb_h = 800
+        scale = thumb_h / img_a.shape[0]
+        thumb_w = max(1, int(img_a.shape[1] * scale))
+        clahe = cv2.createCLAHE(2.0, (8,8))
+        ta, tb = clahe.apply(cv2.resize(img_a, (thumb_w, thumb_h))), clahe.apply(cv2.resize(img_b, (thumb_w, thumb_h)))
+        stitch_preview = np.hstack([ta, np.full((thumb_h, 2), 200, dtype=np.uint8), tb])
+        
+        h_roi = result["_roi_a"].shape[0]
+        cy = h_roi // 2
+        r1, r2 = max(0, cy - 400), max(0, cy - 400) + min(800, h_roi)
+        sa = clahe.apply(result["_roi_a"][r1:r2,:])
+        sb = clahe.apply(result["_roi_b"][r1:r2,:])
+        sbal = clahe.apply(result["roi_b_aligned"][r1:r2,:])
+        
+        fig = plt.figure(figsize=(18, 8), facecolor="#1a1a2e")
+        grid = gs.GridSpec(2, 4, figure=fig, hspace=0.4, wspace=0.3, left=0.04, right=0.97, top=0.88, bottom=0.08)
+        def style(ax, t): ax.set_title(t, color="white", fontsize=10); ax.set_facecolor("#16213e"); ax.tick_params(colors="#666"); [sp.set_edgecolor("#0f3460") for sp in ax.spines.values()]
+        def sc_color(s): return "#2ecc71" if s>=85 else "#3498db" if s>=70 else "#f39c12" if s>=50 else "#e74c3c"
+        
+        ax1 = fig.add_subplot(grid[0, 0:2]); ax1.imshow(stitch_preview, cmap="gray")
+        style(ax1, f"完整全貌 (左:{p_a.name} 右:{p_b.name})")
+        
+        ax2 = fig.add_subplot(grid[0, 2]); ax2.imshow(np.hstack([sa, sb]), cmap="gray")
+        ax2.axvline(sa.shape[1]-0.5, color="#f39c12", ls=":"); style(ax2, "ROI未对齐")
+        
+        ax3 = fig.add_subplot(grid[0, 3]); ax3.imshow(np.hstack([sa, sbal]), cmap="gray")
+        ax3.axvline(sa.shape[1]-0.5, color="#2ecc71", ls=":"); style(ax3, f"ROI对齐后 (Δx={result['dx']:.2f}, Δy={result['dy']:.2f})")
+        
+        ax4 = fig.add_subplot(grid[1, 0]); diff = cv2.absdiff(sa, sbal); im4 = ax4.imshow(diff, cmap="inferno", vmin=0, vmax=max(diff.max(),1))
+        plt.colorbar(im4, ax=ax4, fraction=0.05).ax.tick_params(colors="w"); style(ax4, "差异热图")
+        
+        ax5 = fig.add_subplot(grid[1, 1]); lim=max(abs(result['dx']), abs(result['dy']), 1)*1.5
+        ax5.set_xlim(-lim, lim); ax5.set_ylim(-lim, lim); ax5.axhline(0, color="#0f3460"); ax5.axvline(0, color="#0f3460")
+        ax5.annotate("", xy=(result['dx'], -result['dy']), xytext=(0,0), arrowprops=dict(arrowstyle="->", color="#e74c3c", lw=2))
+        style(ax5, "平移矢量表")
+        
+        ax6 = fig.add_subplot(grid[1, 2]); ax6.axis("off"); ax6.text(0.5, 0.7, f"{result['offset_score']:.1f}", color=sc_color(result['offset_score']), fontsize=32, ha="center")
+        ax6.text(0.5, 0.3, result['bias_direction'], color="white", ha="center"); style(ax6, "★ 评分")
+        
+        ax7 = fig.add_subplot(grid[1, 3]); ax7.axis("off"); ax7.text(0.5, 0.5, "SSIM 异常" if result['phase_corr_suspicious'] else "SSIM 正常", color="#e74c3c" if result['phase_corr_suspicious'] else "#2ecc71", fontsize=20, ha="center")
+        style(ax7, "SSIM验证")
+        
+        fig.suptitle(f"平移偏移检测单文件结果 │ {p_a.name} ↔ {p_b.name}", color="white", fontsize=14, y=0.96)
+        output_image = output_dir / "随机抽样对比示例.png"
+        plt.savefig(output_image, facecolor=fig.get_facecolor(), dpi=150)
+        print(f"[{dataset_name}] 输出已保存至 {output_image}")

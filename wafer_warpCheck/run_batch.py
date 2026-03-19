@@ -4,14 +4,15 @@
 # 输出: batch_results/ 目录下的 CSV、热力图、仪表盘
 
 import struct, time, csv
+import os
 from pathlib import Path
 import cv2, numpy as np, yaml
 from main import evaluate_warp_quality
 
 BASE_DIR   = Path(__file__).parent
-DATA_DIR   = BASE_DIR.parent / "data" / "BF_1_Wafer"
-YAML_FILE  = DATA_DIR / "placements-BF.yml"
-OUTPUT_DIR = BASE_DIR / "batch_results"
+WORKSPACE_DIR = BASE_DIR.parent.parent
+DATA_ROOT_DIR = Path(os.getenv("WAFER_DATA_ROOT", WORKSPACE_DIR / "data")).expanduser().resolve()
+OUTPUT_ROOT_DIR = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
 
 def hex_to_double(hex_str: str) -> float:
     return struct.unpack(">d", bytes.fromhex(hex_str))[0]
@@ -68,7 +69,7 @@ def _save_batch_visualizations(pairs, results, output_dir):
     mean_d = np.mean(distortion_scores) if distortion_scores else 0
     ax.set_title(f"畸变评分空间热力图  |  共 {len(distortion_scores)} 对有效  |  均值 {mean_d:.1f}", color="white", fontsize=11, fontweight="bold", pad=8)
     
-    plt.tight_layout(); fig1.savefig(output_dir / "heatmap_distortion.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig1)
+    plt.tight_layout(); fig1.savefig(output_dir / "晶圆全景图_畸变热力图.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig1)
 
     fig3 = plt.figure(figsize=(13, 11)); fig3.patch.set_facecolor(BG)
     gs = gridspec.GridSpec(2, 2, figure=fig3, hspace=0.35, wspace=0.25, left=0.05, right=0.97, top=0.90, bottom=0.07)
@@ -116,24 +117,29 @@ def _save_batch_visualizations(pairs, results, output_dir):
     style(ax6, "")
 
     fig3.suptitle(f"批量畸变评估面板 │ 共 {n} 对 │ 平均分 {mean_d:.1f}", color="white", fontsize=13, fontweight="bold", y=0.97)
-    fig3.savefig(output_dir / "score_dashboard.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig3)
+    fig3.savefig(output_dir / "晶圆全景图_评分总览.png", dpi=150, bbox_inches="tight", facecolor=BG); plt.close(fig3)
 
-def main():
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    if not YAML_FILE.exists():
-        print(f"配置文件不存在: {YAML_FILE}"); return
-    with open(YAML_FILE, "r") as f: meta = yaml.safe_load(f)
+def _process_dataset(dataset_dir: Path) -> None:
+    dataset_name = dataset_dir.name
+    yaml_file = dataset_dir / "placements-BF.yml"
+    output_dir = OUTPUT_ROOT_DIR / f"{dataset_name}_输出" / "形变翘曲检测"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if not yaml_file.exists():
+        print(f"[{dataset_name}] 配置文件不存在: {yaml_file}")
+        return
+    with open(yaml_file, "r") as f: meta = yaml.safe_load(f)
     px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
     overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
 
-    views = {tuple(int(i) for i in v["index"].split(",")): DATA_DIR / v["filename"] for v in meta["views"]}
+    views = {tuple(int(i) for i in v["index"].split(",")): dataset_dir / v["filename"] for v in meta["views"]}
     coords = sorted(views.keys())
     pairs = [((c, r), (c + 1, r), views[(c, r)], views[(c + 1, r)]) for c, r in coords if (c + 1, r) in views and views[(c, r)].exists() and views[(c + 1, r)].exists()]
 
     if not pairs:
-        print("无匹配的相邻图块"); return
+        print(f"[{dataset_name}] 无匹配的相邻图块")
+        return
 
-    csv_file, txt_file = OUTPUT_DIR / "warp_report.csv", OUTPUT_DIR / "warp_summary.txt"
+    csv_file, txt_file = output_dir / "明细数据.csv", output_dir / "评分报告.txt"
     headers = ["序号", "图块A", "图块B", "Col_A", "Row_A", "Col_B", "Row_B", "评分", "特征法", "匹配数", "旋转角度", "切变量", "X缩放", "Y缩放", "旋转得分", "切变得分"]
     results, t_start = [], time.time()
 
@@ -145,12 +151,24 @@ def main():
             if ia is None or ib is None: continue
             r = evaluate_warp_quality(ia, ib, overlap_px, "horizontal")
             d_str = f"{r['distortion_score']:.1f}" if r["distortion_score"] is not None else "N/A"
-            print(f"[{i}/{len(pairs)}] {pa.name} ↔ {pb.name} | 评分: {d_str} | 旋转: {r['rotation_deg']:.3f}°")
+            print(f"[{dataset_name}] [{i}/{len(pairs)}] {pa.name} ↔ {pb.name} | 评分: {d_str} | 旋转: {r['rotation_deg']:.3f}°")
             writer.writerow([i, pa.name, pb.name, ca[0], ca[1], cb[0], cb[1], d_str, r["distortion_method"], r["inliers"], r["rotation_deg"], r["shear"], r["scale_x"], r["scale_y"], r["score_rotation"] if r["score_rotation"] is not None else "N/A", r["score_shear"] if r["score_shear"] is not None else "N/A"])
             results.append(r)
 
-    print(f"\n评估完成，耗时 {time.time() - t_start:.1f}s")
-    _save_batch_visualizations(pairs, results, OUTPUT_DIR)
+    print(f"\n[{dataset_name}] 评估完成，耗时 {time.time() - t_start:.1f}s")
+    _save_batch_visualizations(pairs, results, output_dir)
+
+
+def main():
+    if not DATA_ROOT_DIR.exists():
+        print(f"data 目录不存在：{DATA_ROOT_DIR}")
+        return
+    dataset_dirs = sorted(path for path in DATA_ROOT_DIR.iterdir() if path.is_dir())
+    if not dataset_dirs:
+        print(f"未在 data 目录下找到数据集文件夹：{DATA_ROOT_DIR}")
+        return
+    for dataset_dir in dataset_dirs:
+        _process_dataset(dataset_dir)
 
 if __name__ == "__main__":
     main()

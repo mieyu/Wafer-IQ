@@ -5,11 +5,16 @@
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+
+BASE_DIR = Path(__file__).resolve().parent
+WORKSPACE_DIR = BASE_DIR.parent.parent
+OUTPUT_ROOT_DIR = Path(os.getenv("WAFER_OUTPUT_ROOT", WORKSPACE_DIR / "output")).expanduser().resolve()
 
 
 class BrightnessReportGenerator:
@@ -25,7 +30,7 @@ class BrightnessReportGenerator:
         """
         self.stats_csv = Path(stats_csv)
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # 读取CSV数据
         self.df = pd.read_csv(self.stats_csv)
@@ -210,7 +215,7 @@ class BrightnessReportGenerator:
 
         # 保存指标
         self.metrics = metrics
-        json_path = self.output_dir / "metrics.json"
+        json_path = self.output_dir / "评分指标.json"
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(metrics, f, indent=2, ensure_ascii=False)
 
@@ -277,7 +282,7 @@ class BrightnessReportGenerator:
 """
 
         # 保存报告
-        report_path = self.output_dir / "report.txt"
+        report_path = self.output_dir / "评分报告.txt"
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(report)
 
@@ -287,20 +292,28 @@ class BrightnessReportGenerator:
 
 def main():
     """主函数"""
-    # 配置参数
-    stats_csv = "brightness_1_results/brightness_stats.csv"
-    output_dir = "brightness_1_results"
+    if not OUTPUT_ROOT_DIR.exists():
+        print(f"output 目录不存在：{OUTPUT_ROOT_DIR}")
+        return
+    module_output_dirs = sorted(
+        path / "亮度检测"
+        for path in OUTPUT_ROOT_DIR.iterdir()
+        if path.is_dir() and path.name.endswith("_输出")
+    )
+    if not module_output_dirs:
+        print(f"未在 output 目录下找到 *_输出 目录：{OUTPUT_ROOT_DIR}")
+        return
 
-    # 创建报告生成器
-    generator = BrightnessReportGenerator(stats_csv, output_dir)
-
-    # 先计算指标
-    generator.calculate_metrics()
-    print("\n✓ 指标计算完成，已生成 metrics.json")
-
-    # 再生成报告
-    generator.generate_report()
-    print("✓ 报告生成完成，已生成 report.txt")
+    for module_output_dir in module_output_dirs:
+        stats_csv_path = module_output_dir / "明细数据.csv"
+        if not stats_csv_path.exists():
+            continue
+        print(f"\n开始生成亮度报告：{module_output_dir.parent.name}")
+        generator = BrightnessReportGenerator(str(stats_csv_path), str(module_output_dir))
+        generator.calculate_metrics()
+        print("\n✓ 指标计算完成，已生成 评分指标.json")
+        generator.generate_report()
+        print("✓ 报告生成完成，已生成 评分报告.txt")
 
 
 if __name__ == "__main__":
