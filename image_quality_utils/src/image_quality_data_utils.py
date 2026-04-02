@@ -24,8 +24,8 @@ class ImageQualityDataUtils:
     # YAML 配置解析（坐标来源）
     # ==================================================================
 
+    @staticmethod
     def load_yaml_meta(
-        self,
         yaml_path: str | Path,
     ) -> dict[str, Any]:
         """
@@ -58,7 +58,8 @@ class ImageQualityDataUtils:
     # 统计工具
     # ==================================================================
 
-    def safe_std(self, series: pd.Series) -> float:
+    @staticmethod
+    def safe_std(series: pd.Series) -> float:
         """
         安全地计算 DataFrame / Series 的标准差。
         防止因样本数为 0 或 1 导致的 NaN 返回，统一以 0.0 处理。
@@ -72,8 +73,9 @@ class ImageQualityDataUtils:
     # 坐标索引工具
     # ==================================================================
 
+    @staticmethod
     def build_coord_index(
-        self, df: pd.DataFrame
+        df: pd.DataFrame
     ) -> tuple[list[Any], list[Any], dict[Any, int], dict[Any, int], set[tuple[Any, Any]]]:
         """
         提取 DataFrame 中所有的去重坐标，并构建位置索引与集合，
@@ -86,8 +88,8 @@ class ImageQualityDataUtils:
         coord_set = set(zip(df["x"], df["y"]))
         return x_coords, y_coords, x_index, y_index, coord_set
 
+    @staticmethod
     def is_edge_position(
-        self,
         x: Any,
         y: Any,
         x_coords: list[Any],
@@ -123,8 +125,9 @@ class ImageQualityDataUtils:
     # 网格映射
     # ==================================================================
 
+    @staticmethod
     def build_grid(
-        self, df: pd.DataFrame, metric_names: list[str]
+        df: pd.DataFrame, metric_names: list[str]
     ) -> dict[str, Any]:
         """
         将 DataFrame 映射到二维网格，供热图绘制使用。
@@ -167,7 +170,8 @@ class ImageQualityDataUtils:
     # 逻辑推断
     # ==================================================================
 
-    def enrich_region_type(self, df: pd.DataFrame) -> pd.DataFrame:
+    @staticmethod
+    def enrich_region_type(df: pd.DataFrame) -> pd.DataFrame:
         """基于所有图像的亮度统计学特征，推断每张图像所属的区域类型（正常、纯背景、半背景）。"""
         result = df.copy()
         if result.empty:
@@ -177,16 +181,16 @@ class ImageQualityDataUtils:
         # 根据有效图像的均值和标准差计算动态阈值
         valid_df = result[result["is_valid"] == True]
         mean_val = float(valid_df["valid_mean"].mean()) if len(valid_df) > 0 else 0.0
-        std_val  = self.safe_std(valid_df["valid_mean"]) if len(valid_df) > 0 else 0.0
+        std_val  = ImageQualityDataUtils.safe_std(valid_df["valid_mean"]) if len(valid_df) > 0 else 0.0
         dark_threshold      = mean_val - std_val
         very_dark_threshold = mean_val - 3 * std_val
 
         # 构建坐标索引以便判断是否是边缘位置
-        x_coords, y_coords, x_index, y_index, coord_set = self.build_coord_index(result)
+        x_coords, y_coords, x_index, y_index, coord_set = ImageQualityDataUtils.build_coord_index(result)
 
         def classify(row: pd.Series) -> str:
             # 只有在边缘的图像才可能是背景过渡区
-            if not self.is_edge_position(
+            if not ImageQualityDataUtils.is_edge_position(
                 row["x"], row["y"], x_coords, y_coords, x_index, y_index, coord_set
             ):
                 return "normal"

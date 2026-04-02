@@ -63,9 +63,6 @@ class ImageQualityCalculator:
         self.background_threshold    = background_threshold
         self.valid_ratio_threshold   = valid_ratio_threshold
         self.high_brightness_threshold = high_brightness_threshold
-        self._data_utils  = ImageQualityDataUtils()   # 数据层工具：YAML解析、坐标索引、DataFrame 操作
-        self._image_utils = ImageQualityImageUtils()  # 图像工具：ROI提取、相位相关、SSIM 计算
-        self._scorer      = ImageQualityScorer()      # 评分分析器：0-100 打分策略统管
 
     # ==================================================================
     # 统一批量入口：滑动窗口机制，读图一次，分发给所有计算模块
@@ -93,7 +90,7 @@ class ImageQualityCalculator:
 
         # ── 从 YAML 解析图块坐标与 overlap_px ────────────────────────────
         yaml_path = data_dir / yaml_filename
-        yaml_meta = self._data_utils.load_yaml_meta(yaml_path)
+        yaml_meta = ImageQualityDataUtils.load_yaml_meta(yaml_path)
         if not yaml_meta:
             logger.error(f"无法加载 YAML 配置，终止分析：{yaml_path}")
             return pd.DataFrame()
@@ -218,7 +215,7 @@ class ImageQualityCalculator:
 
         # 转换为 DataFrame 并基于统计值进行区域类型打标
         df = pd.DataFrame(rows)
-        return self._data_utils.enrich_region_type(df)
+        return ImageQualityDataUtils.enrich_region_type(df)
 
     def _read_and_calc_single(
         self, image_path: Path, coord: tuple[int, int] | None = None
@@ -283,7 +280,7 @@ class ImageQualityCalculator:
             df = pd.read_csv(stats_source)
 
         if "region_type" not in df.columns:
-            df = self._data_utils.enrich_region_type(df)
+            df = ImageQualityDataUtils.enrich_region_type(df)
 
         pure_bg_count = int((df["region_type"] == "pure_bg").sum())
         half_bg_count = int((df["region_type"] == "half_bg").sum())
@@ -295,7 +292,7 @@ class ImageQualityCalculator:
         normal_df = df[df["region_type"] == "normal"]
 
         avg_brightness_all = float(non_bg_df["valid_mean"].mean()) if len(non_bg_df) > 0 else 0.0
-        std_brightness_all = self._data_utils.safe_std(non_bg_df["valid_mean"]) if len(non_bg_df) > 0 else 0.0
+        std_brightness_all = ImageQualityDataUtils.safe_std(non_bg_df["valid_mean"]) if len(non_bg_df) > 0 else 0.0
         # CV(变异系数) 反映数据的离散程度
         cv_all = (std_brightness_all / avg_brightness_all * 100) if avg_brightness_all > 0 else 0.0
 
@@ -307,14 +304,14 @@ class ImageQualityCalculator:
             high_brightness_ratio = 0.0
 
         # 计算特定的打分
-        score_visual      = self._scorer.calc_visual_score(non_bg_df)
-        score_consistency = self._scorer.calc_consistency_score(non_bg_df)
+        score_visual      = ImageQualityScorer.calc_visual_score(non_bg_df)
+        score_consistency = ImageQualityScorer.calc_consistency_score(non_bg_df)
 
         # 统计正常区域的高级指标及偏离中心分布的异常数量
         if len(normal_df) > 0:
             mean_brightness   = float(normal_df["valid_mean"].mean())
             median_brightness = float(normal_df["valid_mean"].median())
-            std_brightness    = self._data_utils.safe_std(normal_df["valid_mean"])
+            std_brightness    = ImageQualityDataUtils.safe_std(normal_df["valid_mean"])
             min_brightness    = float(normal_df["valid_mean"].min())
             max_brightness    = float(normal_df["valid_mean"].max())
             cv_percent        = (std_brightness / mean_brightness * 100) if mean_brightness > 0 else 0.0
@@ -375,13 +372,13 @@ class ImageQualityCalculator:
 
     def sharpness_calculate(self, gray: np.ndarray) -> dict[str, Any]:
         """计算单张灰度图的清晰度指标，输入为已读取的灰度图数组。"""
-        fft_val = self._image_utils.fft_high_freq_ratio(gray)
+        fft_val = ImageQualityImageUtils.fft_high_freq_ratio(gray)
         return {
-            "laplacian":       self._image_utils.laplacian_variance(gray),
-            "tenengrad":       self._image_utils.tenengrad(gray),
+            "laplacian":       ImageQualityImageUtils.laplacian_variance(gray),
+            "tenengrad":       ImageQualityImageUtils.tenengrad(gray),
             "fft":             fft_val,
-            "brenner":         self._image_utils.brenner_gradient(gray),
-            "sharpness_score": self._scorer.calc_base_sharpness_score(fft_val),
+            "brenner":         ImageQualityImageUtils.brenner_gradient(gray),
+            "sharpness_score": ImageQualityScorer.calc_base_sharpness_score(fft_val),
         }
 
     def get_sharpness_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
@@ -391,7 +388,7 @@ class ImageQualityCalculator:
         metrics: dict[str, Any] = {
             "total_images":      int(len(df)),
             "sharpness_score":   float(df["sharpness_score"].mean()) if "sharpness_score" in df.columns else 0.0,
-            "uniformity_score":  self._scorer.calc_uniformity_score(df, SHARPNESS_METRICS),
+            "uniformity_score":  ImageQualityScorer.calc_uniformity_score(df, SHARPNESS_METRICS),
         }
         # 遍历所有支持的清晰度算法，并分别计算统计量
         for name in SHARPNESS_METRICS:
@@ -399,7 +396,7 @@ class ImageQualityCalculator:
                 continue
             col = df[name].dropna()
             metrics[f"{name}_mean"]   = float(col.mean())
-            metrics[f"{name}_std"]    = self._data_utils.safe_std(col)
+            metrics[f"{name}_std"]    = ImageQualityDataUtils.safe_std(col)
             metrics[f"{name}_median"] = float(col.median())
             metrics[f"{name}_min"]    = float(col.min())
             metrics[f"{name}_max"]    = float(col.max())
@@ -419,9 +416,9 @@ class ImageQualityCalculator:
     ) -> dict[str, Any]:
         """计算相邻两张图的平移偏移量，所有结果键以 shift_ 前缀区分。"""
         # 提取重叠的感兴趣区域(ROI)
-        roi_a, roi_b = self._image_utils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
+        roi_a, roi_b = ImageQualityImageUtils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
         # 通过相位相关法计算平移量及置信度响应
-        dx, dy, response = self._image_utils.phase_correlation(roi_a, roi_b)
+        dx, dy, response = ImageQualityImageUtils.phase_correlation(roi_a, roi_b)
 
         # 异常巨大偏移量拦截
         # 物理上，相邻晶圆图像的实际偏差只会在小范围（通常十几像素）。
@@ -437,7 +434,7 @@ class ImageQualityCalculator:
 
         # SSIM 验证
         h, w = roi_a.shape[:2]
-        ssim_before = self._image_utils.calc_ssim(roi_a, roi_b)
+        ssim_before = ImageQualityImageUtils.calc_ssim(roi_a, roi_b)
         # 使用算出的平移量构建仿射矩阵并对齐图像 B
         T = np.float32([[1, 0, -dx], [0, 1, -dy]])
         roi_b_aligned = cv2.warpAffine(roi_b, T, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
@@ -447,12 +444,12 @@ class ImageQualityCalculator:
         x1, x2, y1, y2 = mx, w - mx, my, h - my
         crop_a = roi_a[y1:y2, x1:x2] if x2 > x1 and y2 > y1 else roi_a
         crop_b = roi_b_aligned[y1:y2, x1:x2] if x2 > x1 and y2 > y1 else roi_b_aligned
-        ssim_after = self._image_utils.calc_ssim(crop_a, crop_b)
+        ssim_after = ImageQualityImageUtils.calc_ssim(crop_a, crop_b)
         # 如果对齐后 SSIM 反而下降，视为可疑计算结果
         suspicious = bool((ssim_after - ssim_before) < 0)
 
         # 偏移评分交由评分引擎
-        total, s_dx, s_dy = self._scorer.calc_shift_pair_score(dx, dy, response)
+        total, s_dx, s_dy = ImageQualityScorer.calc_shift_pair_score(dx, dy, response)
 
         # 分析偏移的主要方向
         adx, ady = abs(dx), abs(dy)
@@ -495,8 +492,8 @@ class ImageQualityCalculator:
             "shift_score_mean":     float(valid["shift_score"].mean()),
             "shift_dx_mean":        float(valid["shift_dx"].mean()),
             "shift_dy_mean":        float(valid["shift_dy"].mean()),
-            "shift_dx_std":         self._data_utils.safe_std(valid["shift_dx"]),
-            "shift_dy_std":         self._data_utils.safe_std(valid["shift_dy"]),
+            "shift_dx_std":         ImageQualityDataUtils.safe_std(valid["shift_dx"]),
+            "shift_dy_std":         ImageQualityDataUtils.safe_std(valid["shift_dy"]),
             "shift_suspicious_count": n_suspicious,
             "shift_suspicious_ratio": n_suspicious / len(valid) * 100,
         }
@@ -515,7 +512,7 @@ class ImageQualityCalculator:
         dy_prior: float = 0.0,
     ) -> dict[str, Any]:
         """计算相邻两张图的畸变量，所有结果键以 dist_ 前缀区分。"""
-        roi_a, roi_b = self._image_utils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
+        roi_a, roi_b = ImageQualityImageUtils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
         empty = {**_DISTORTION_EMPTY}
 
         # 1. 提取 SIFT 特征
@@ -569,7 +566,7 @@ class ImageQualityCalculator:
         scale_y      = float(S[1, 1])
 
         # 畸变评分交由评分引擎
-        dist_score, s_r, s_s = self._scorer.calc_distortion_pair_score(rotation_deg, shear)
+        dist_score, s_r, s_s = ImageQualityScorer.calc_distortion_pair_score(rotation_deg, shear)
 
         return {
             "dist_rotation_deg":   rotation_deg,
@@ -596,7 +593,7 @@ class ImageQualityCalculator:
             "dist_score_mean":       float(valid["dist_score"].mean()),
             "dist_rotation_mean":    float(valid["dist_rotation_deg"].mean()),
             "dist_shear_mean":       float(valid["dist_shear"].mean()),
-            "dist_score_std":        self._data_utils.safe_std(valid["dist_score"]),
+            "dist_score_std":        ImageQualityDataUtils.safe_std(valid["dist_score"]),
             "dist_failed_ratio":     n_failed / n_total * 100 if n_total > 0 else 0.0,
         }
 

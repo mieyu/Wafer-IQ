@@ -16,8 +16,8 @@ class ImageQualityImageUtils:
     # ROI 提取
     # ==================================================================
 
+    @staticmethod
     def extract_roi(
-        self,
         gray_a: np.ndarray,
         gray_b: np.ndarray,
         overlap_length: int,
@@ -50,8 +50,8 @@ class ImageQualityImageUtils:
     # 相位相关（平移估算）
     # ==================================================================
 
+    @staticmethod
     def phase_correlation(
-        self,
         roi_a: np.ndarray,
         roi_b: np.ndarray,
     ) -> tuple[float, float, float]:
@@ -72,8 +72,8 @@ class ImageQualityImageUtils:
     # SSIM 结构相似度
     # ==================================================================
 
+    @staticmethod
     def calc_ssim(
-        self,
         img_a: np.ndarray,
         img_b: np.ndarray,
     ) -> float:
@@ -124,17 +124,20 @@ class ImageQualityImageUtils:
     # 清晰度底层计算 (无状态的数学特征提取)
     # ==================================================================
 
-    def laplacian_variance(self, gray: np.ndarray) -> float:
+    @staticmethod
+    def laplacian_variance(gray: np.ndarray) -> float:
         """使用拉普拉斯算子计算图像方差，方差越大边缘信息越丰富。"""
         return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
-    def tenengrad(self, gray: np.ndarray) -> float:
+    @staticmethod
+    def tenengrad(gray: np.ndarray) -> float:
         """使用 Sobel 算子求水平和垂直梯度平方和均值。"""
         gx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         gy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
         return float(np.mean(gx ** 2 + gy ** 2))
 
-    def fft_high_freq_ratio(self, gray: np.ndarray, cutoff_ratio: float = 0.1) -> float:
+    @staticmethod
+    def fft_high_freq_ratio(gray: np.ndarray, cutoff_ratio: float = 0.1) -> float:
         """利用快速傅里叶变换(FFT)计算高频能量占总能量的比例，反映细节丰富度。"""
         h, w = gray.shape
         magnitude = np.abs(np.fft.fftshift(np.fft.fft2(gray.astype(np.float64))))
@@ -145,7 +148,8 @@ class ImageQualityImageUtils:
             return 0.0
         return float(magnitude[dist > cutoff_ratio * min(h, w) / 2].sum() / total_power)
 
-    def brenner_gradient(self, gray: np.ndarray) -> float:
+    @staticmethod
+    def brenner_gradient(gray: np.ndarray) -> float:
         """计算 Brenner 梯度（相差2个像素的差值平方均值）。"""
         img = gray.astype(np.float64)
         return float(np.mean((img[:, 2:] - img[:, :-2]) ** 2))

@@ -38,7 +38,6 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
     """对单个晶圆子目录执行完整的四项质量分析并输出报告。"""
     calc       = ImageQualityCalculator()
     reporter   = ImageQualityReporter(output_dir)
-    data_utils = ImageQualityDataUtils()
 
     logger.info(f"══════════════════════════════════════════════")
     logger.info(f"开始分析：{data_dir.name}  →  {output_dir}")
@@ -64,7 +63,7 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
 
     # ── 清晰度报告 ────────────────────────────────────────────────────
     sharpness_metrics = calc.get_sharpness_metrics(df)
-    grid_data = data_utils.build_grid(df, metric_names=["laplacian", "tenengrad", "fft", "brenner"])
+    grid_data = ImageQualityDataUtils.build_grid(df, metric_names=["laplacian", "tenengrad", "fft", "brenner"])
     sharpness_outputs = reporter.generate_sharpness_all(df, sharpness_metrics, grid_data)
     logger.info(f"[{data_dir.name}][清晰度] 报告已生成：")
     for key, val in sharpness_outputs.items():
@@ -108,10 +107,10 @@ def main() -> None:
         description="晶圆图像质量批量分析工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例：
-  python main.py ../data ../output
-      → 自动扫描 data/ 下所有子文件夹，每个子文件夹对应输出到 output/<子文件夹名>/
-""",
+        示例：
+        python main.py ../data ../output
+            → 自动扫描 data/ 下所有子文件夹，每个子文件夹对应输出到 output/<子文件夹名>/
+        """,
     )
     parser.add_argument("input_dir",  type=Path, help="输入父目录，包含若干晶圆子文件夹（如 data/）")
     parser.add_argument("output_dir", type=Path, help="输出父目录，各子文件夹结果按名称对应存入（如 output/）")
