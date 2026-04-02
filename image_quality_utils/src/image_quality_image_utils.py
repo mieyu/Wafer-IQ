@@ -23,16 +23,16 @@ class ImageQualityImageUtils:
         overlap_length: int,
         stitch_direction: str,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        根据拼接方向提取两张图像重叠边缘的感兴趣区域 (ROI)。
+        """根据拼接方向提取两张图像重叠边缘的感兴趣区域 (ROI)。
 
-        参数：
-            gray_a:           左/上图灰度数组
-            gray_b:           右/下图灰度数组
-            overlap_length:   重叠区像素宽度
-            stitch_direction: 拼接方向，'horizontal' 或 'vertical'
+        Args:
+            gray_a (np.ndarray): 左/上图的灰度数组。
+            gray_b (np.ndarray): 右/下图的灰度数组。
+            overlap_length (int): 重叠区域的像素宽度。
+            stitch_direction (str): 拼接方向，'horizontal' 或 'vertical'。
 
-        返回：(roi_a, roi_b) 尺寸对齐的两片重叠区域
+        Returns:
+            tuple[np.ndarray, np.ndarray]: 尺寸对齐的两片重叠区域 (roi_a, roi_b)。
         """
         d = stitch_direction.lower()
         if d == "horizontal":
@@ -55,12 +55,17 @@ class ImageQualityImageUtils:
         roi_a: np.ndarray,
         roi_b: np.ndarray,
     ) -> tuple[float, float, float]:
-        """
-        应用相位相关法计算两个图像块之间的亚像素级别平移量。
+        """应用相位相关法计算两个图像块之间的亚像素级别平移量。
 
-        返回：(dx, dy, response)
-            dx, dy: 平移像素数（亚像素精度）
-            response: 相关响应强度，越大置信度越高
+        Args:
+            roi_a (np.ndarray): 前置提取的感兴趣区域 A。
+            roi_b (np.ndarray): 前置提取的感兴趣区域 B。
+
+        Returns:
+            tuple[float, float, float]:
+                - dx (float): 水平平移像素数（亚像素精度）。
+                - dy (float): 垂直平移像素数（亚像素精度）。
+                - response (float): 相关响应强度，越大置信度越高。
         """
         fa, fb = roi_a.astype(np.float32), roi_b.astype(np.float32)
         # 添加汉宁窗减轻频域计算中的边缘效应
@@ -77,11 +82,17 @@ class ImageQualityImageUtils:
         img_a: np.ndarray,
         img_b: np.ndarray,
     ) -> float:
-        """
-        计算两幅灰度图像的结构相似度 (SSIM)。
-        优先使用 skimage 中的优化版本；如果未安装则回退使用基于 OpenCV 的自定义实现。
+        """计算两幅灰度图像的结构相似度 (SSIM)。
 
-        注意：当图像极小（< 3×3）时直接返回像素级相似度，避免 win_size 超界报错。
+        优先使用 skimage 中的优化版本；如果未安装则回退使用基于 OpenCV 的自定义实现。
+        注意：当图像极小（< 3x3）时直接返回像素级相似度，避免 win_size 超界报错。
+
+        Args:
+            img_a (np.ndarray): 第一张图像的灰度数组。
+            img_b (np.ndarray): 第二张图像的灰度数组。
+
+        Returns:
+            float: 计算出的结构相似度评分 (0.0 到 1.0)。
         """
         min_side = min(img_a.shape[0], img_a.shape[1])
 

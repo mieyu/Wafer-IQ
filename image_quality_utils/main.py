@@ -35,7 +35,12 @@ NUM_WORKERS      = 8                     # 多线程分析并发数
 # ------------------------------------------------------------------
 
 def analyze_one(data_dir: Path, output_dir: Path) -> None:
-    """对单个晶圆子目录执行完整的四项质量分析并输出报告。"""
+    """对单个晶圆子目录执行完整的四项质量分析并输出报告。
+
+    Args:
+        data_dir (Path): 待分析的特定晶圆子目录路径。
+        output_dir (Path): 对应此晶圆结果输出的目录路径。
+    """
     calc       = ImageQualityCalculator()
     reporter   = ImageQualityReporter(output_dir)
 

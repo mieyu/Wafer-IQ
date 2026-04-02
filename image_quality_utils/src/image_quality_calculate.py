@@ -52,13 +52,12 @@ class ImageQualityCalculator:
         valid_ratio_threshold: float = 0.1,
         high_brightness_threshold: int = 100,
     ) -> None:
-        """
-        初始化计算器参数。
+        """初始化计算器参数。
         
-        参数:
-            background_threshold: 区分前景和背景的灰度阈值，低于此值认为是背景。
-            valid_ratio_threshold: 有效像素（非背景）比例的最低阈值，用于判定图像是否包含足够有效信息。
-            high_brightness_threshold: 高亮度判定阈值。
+        Args:
+            background_threshold (int): 区分前景和背景的灰度阈值，低于此值认为是背景。
+            valid_ratio_threshold (float): 有效像素（非背景）比例的最低阈值，用于判定图像是否包含足够有效信息。
+            high_brightness_threshold (int): 高亮度判定阈值。
         """
         self.background_threshold    = background_threshold
         self.valid_ratio_threshold   = valid_ratio_threshold
@@ -75,16 +74,19 @@ class ImageQualityCalculator:
         stitch_direction: str = "horizontal",
         num_workers: int = 8,
     ) -> pd.DataFrame:
-        """
-        滑动窗口批量处理：
+        """滑动窗口批量处理：
           - 坐标与重叠区像素数均从 placements-BF.yml 解析，与 wafer_shiftCheck/warpCheck 保持一致。
           - 单双图计算重新引入 ThreadPoolExecutor 多线程并行加速。
           - 每张图只读取一次，灰度图缓存在内存中复用。
 
-        参数：
-            data_dir:         图像目录（同时也是 YAML 所在目录）
-            yaml_filename:    YAML 配置文件名，默认 placements-BF.yml
-            stitch_direction: 拼接方向，"horizontal" 或 "vertical"
+        Args:
+            data_dir (str | Path): 图像目录（同时也是 YAML 所在目录）。
+            yaml_filename (str): YAML 配置文件名，默认 placements-BF.yml。
+            stitch_direction (str): 拼接方向，"horizontal" 或 "vertical"。
+            num_workers (int): 多线程并发数，默认 8。
+
+        Returns:
+            pd.DataFrame: 整理后的全部检测指标和各类统计特征矩阵。
         """
         data_dir = Path(data_dir)
 
@@ -250,7 +252,16 @@ class ImageQualityCalculator:
     # ==================================================================
 
     def brightness_calculate(self, gray: np.ndarray) -> dict[str, Any]:
-        """计算单张灰度图的亮度指标，输入为已读取的灰度图数组。"""
+        """计算单幅灰度图的统计学特征。
+
+        基于给定背景判定阈值和有效像素比例筛选出非背景的主体对象。
+
+        Args:
+            gray (np.ndarray): 输入的单图灰度数组。
+
+        Returns:
+            dict[str, Any]: 亮度统计特征字典。
+        """
         # 利用背景阈值提取有效前景像素
         valid_mask  = gray > self.background_threshold
         valid_ratio = float(np.sum(valid_mask) / gray.size)
@@ -272,7 +283,15 @@ class ImageQualityCalculator:
         stats_source: str | Path | pd.DataFrame,
         data_dir: str | Path | None = None,
     ) -> dict[str, Any]:
-        """对整个数据集的亮度指标进行汇总、聚合和异常值统计。"""
+        """对整个数据集的亮度指标进行汇总、聚合和异常值统计。
+
+        Args:
+            stats_source (str | Path | pd.DataFrame): 亮度明细数据表格对象或路径。
+            data_dir (str | Path | None): 附加的输入路径，用于报告标记。
+
+        Returns:
+            dict[str, Any]: 亮度高阶汇总特征（平均指、异常值）。
+        """
         # 支持直接传入 DataFrame 或者 CSV 文件路径
         if isinstance(stats_source, pd.DataFrame):
             df = stats_source.copy()
@@ -371,7 +390,14 @@ class ImageQualityCalculator:
     # ==================================================================
 
     def sharpness_calculate(self, gray: np.ndarray) -> dict[str, Any]:
-        """计算单张灰度图的清晰度指标，输入为已读取的灰度图数组。"""
+        """计算单张灰度图的多种清晰度底层指标特征。
+
+        Args:
+            gray (np.ndarray): 已读取的有效灰度图数组。
+
+        Returns:
+            dict[str, Any]: 包含 Laplacian方差、十种梯度能量、FFT能量比等的各阶清洗度特征分量字典。
+        """
         fft_val = ImageQualityImageUtils.fft_high_freq_ratio(gray)
         return {
             "laplacian":       ImageQualityImageUtils.laplacian_variance(gray),
@@ -382,7 +408,14 @@ class ImageQualityCalculator:
         }
 
     def get_sharpness_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
-        """汇总清晰度指标统计数据。"""
+        """对所有图块的各种清洗度底层参数做宏观统计分析和汇总。
+
+        Args:
+            df (pd.DataFrame): 单图明细数据表。
+
+        Returns:
+            dict[str, Any]: 整体均摊汇总性能体系（包括均匀性评估等）。
+        """
         if df.empty:
             return {}
         metrics: dict[str, Any] = {
@@ -414,7 +447,19 @@ class ImageQualityCalculator:
         overlap_length: int,
         stitch_direction: str,
     ) -> dict[str, Any]:
-        """计算相邻两张图的平移偏移量，所有结果键以 shift_ 前缀区分。"""
+        """计算拼缝处相邻两张图在像素域的平移量。
+
+        所有结果键均以 'shift_' 作为前缀。包含防误判处理如结构相似度计算校验（SSIM）。
+
+        Args:
+            gray_prev (np.ndarray): 前驱节点图的灰度矩阵。
+            gray_curr (np.ndarray): 当前节点图的灰度矩阵。
+            overlap_length (int): 定义两图边缘之间的预估重合长度。
+            stitch_direction (str): 图块排布与邻里的接壤方向。
+
+        Returns:
+            dict[str, Any]: 计算得出的拼合处坐标系平移变量 'dx'，'dy' 以及结构相似度的诊断日志集合。
+        """
         # 提取重叠的感兴趣区域(ROI)
         roi_a, roi_b = ImageQualityImageUtils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
         # 通过相位相关法计算平移量及置信度响应
@@ -482,7 +527,14 @@ class ImageQualityCalculator:
         }
 
     def get_shift_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
-        """汇总位移偏移指标统计数据。"""
+        """从拼图重合边集合统计批量汇总出平移偏移性能均值和方差报告。
+
+        Args:
+            df (pd.DataFrame): 双图配准明细数据表。
+
+        Returns:
+            dict[str, Any]: 整体偏移统计数据字典。
+        """
         valid = df.dropna(subset=["shift_dx", "shift_dy"])
         if valid.empty:
             return {}
@@ -511,7 +563,21 @@ class ImageQualityCalculator:
         dx_prior: float = 0.0,
         dy_prior: float = 0.0,
     ) -> dict[str, Any]:
-        """计算相邻两张图的畸变量，所有结果键以 dist_ 前缀区分。"""
+        """使用特征关键点提取（OpenCV SIFT）并进行物理扭曲模型分析，测量相邻两张图拼接时的畸变。
+
+        所有结果键以 'dist_' 作为前缀。
+
+        Args:
+            gray_prev (np.ndarray): 头侧图片灰度数组。
+            gray_curr (np.ndarray): 尾侧图片灰度数组。
+            overlap_length (int): 拼区预估重复带宽。
+            stitch_direction (str): 滑动方向匹配，"horizontal" 或 "vertical"。
+            dx_prior (float): 平移分析传入的粗筛水平位移参数（辅助剔除无效特征点）。
+            dy_prior (float): 平移分析传入的粗筛垂向位移参数（辅助剔除无效特征点）。
+
+        Returns:
+            dict[str, Any]: OpenCV 单应性评估提取出的两图间扭曲模型。包含旋转角与错切变量，或在匹配抛锚时反推缺失数据。
+        """
         roi_a, roi_b = ImageQualityImageUtils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
         empty = {**_DISTORTION_EMPTY}
 
@@ -581,7 +647,14 @@ class ImageQualityCalculator:
         }
 
     def get_distortion_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
-        """汇总畸变指标统计数据。"""
+        """从各块对的配准结果提取全批次异常特征指标。
+
+        Args:
+            df (pd.DataFrame): 包含双图 SIFT 参数值的明细 DataFrame。
+
+        Returns:
+            dict[str, Any]: 总体形变指标字典。
+        """
         valid = df.dropna(subset=["dist_score"])
         n_total  = int(len(df.dropna(subset=["shift_dx"])))   # 参与双图计算的对数
         n_failed = n_total - int(len(valid))

@@ -28,12 +28,16 @@ class ImageQualityDataUtils:
     def load_yaml_meta(
         yaml_path: str | Path,
     ) -> dict[str, Any]:
-        """
-        解析 placements-BF.yml，返回包含以下键的字典：
-        - overlap_px  : 重叠区域实际像素宽度（int）
-        - views       : dict，key = (col, row) 坐标元组，value = 图像文件 Path
+        """解析 placements-BF.yml，返回包含重叠区域与视图文件路径的字典。
 
-        如果文件不存在或解析失败，返回空 dict。
+        Args:
+            yaml_path (str | Path): YAML 配置文件路径。
+
+        Returns:
+            dict[str, Any]: 包含以下键的字典：
+                - overlap_px (int): 重叠区域实际像素宽度。
+                - views (dict): key 为 (col, row) 坐标元组，value 为图像文件 Path。
+                如果文件不存在或解析失败，返回空 dict。
         """
         yaml_path = Path(yaml_path)
         if not yaml_path.exists():
@@ -60,9 +64,15 @@ class ImageQualityDataUtils:
 
     @staticmethod
     def safe_std(series: pd.Series) -> float:
-        """
-        安全地计算 DataFrame / Series 的标准差。
+        """安全地计算 DataFrame / Series 的标准差。
+
         防止因样本数为 0 或 1 导致的 NaN 返回，统一以 0.0 处理。
+
+        Args:
+            series (pd.Series): 需要计算标准差的 Pandas Series 数据。
+
+        Returns:
+            float: 计算出的安全标准差，遇到 NaN 默认返回 0.0。
         """
         if len(series) <= 1:
             return 0.0
@@ -77,9 +87,20 @@ class ImageQualityDataUtils:
     def build_coord_index(
         df: pd.DataFrame
     ) -> tuple[list[Any], list[Any], dict[Any, int], dict[Any, int], set[tuple[Any, Any]]]:
-        """
-        提取 DataFrame 中所有的去重坐标，并构建位置索引与集合，
+        """提取 DataFrame 中所有的去重坐标，并构建位置索引与集合。
+
         用来加速后续对相邻坐标(边缘位置)存在与否的查找判定。
+
+        Args:
+            df (pd.DataFrame): 包含列名 'x' 和 'y' 的 DataFrame 数据。
+
+        Returns:
+            tuple:
+                - x_coords (list[Any]): 排序去重后的 X 坐标列表。
+                - y_coords (list[Any]): 排序去重后的 Y 坐标列表。
+                - x_index (dict[Any, int]): X 坐标与其在列表内索引的映射字典。
+                - y_index (dict[Any, int]): Y 坐标与其在列表内索引的映射字典。
+                - coord_set (set[tuple[Any, Any]]): 去重后的 (x, y) 坐标元组集合。
         """
         x_coords = sorted(df["x"].dropna().unique().tolist())
         y_coords = sorted(df["y"].dropna().unique().tolist())
@@ -98,9 +119,21 @@ class ImageQualityDataUtils:
         y_index: dict[Any, int],
         coord_set: set[tuple[Any, Any]],
     ) -> bool:
-        """
-        基于全局构建好的坐标索引信息，判断当前给定的 (x, y) 是否位于边缘位置。
+        """基于全局构建好的坐标索引信息，判断当前给定的 (x, y) 是否位于边缘位置。
+
         即判断当前坐标上下左右相邻的点是否缺失。
+
+        Args:
+            x (Any): 当前的 x 坐标值。
+            y (Any): 当前的 y 坐标值。
+            x_coords (list[Any]): 预构建的 x 坐标列表。
+            y_coords (list[Any]): 预构建的 y 坐标列表。
+            x_index (dict[Any, int]): 预构建的 x 坐标索引字典。
+            y_index (dict[Any, int]): 预构建的 y 坐标索引字典。
+            coord_set (set[tuple[Any, Any]]): 预构建的坐标点集合。
+
+        Returns:
+            bool: 处于边缘（上下左右任一相邻图块缺失）时返回 True，否则返回 False。
         """
         if pd.isna(x) or pd.isna(y):
             return False
@@ -129,18 +162,18 @@ class ImageQualityDataUtils:
     def build_grid(
         df: pd.DataFrame, metric_names: list[str]
     ) -> dict[str, Any]:
-        """
-        将 DataFrame 映射到二维网格，供热图绘制使用。
+        """将 DataFrame 映射到二维网格，供热图绘制使用。
 
-        参数：
-            df:           包含 x, y 及各指标列的 DataFrame
-            metric_names: 需要构建网格的指标列名列表
+        Args:
+            df (pd.DataFrame): 包含 x, y 及各指标列的 DataFrame。
+            metric_names (list[str]): 需要构建网格的指标列名列表。
 
-        返回字典：
-            - "df":       原始 DataFrame
-            - "x_labels": 排序后的 x 坐标值列表
-            - "y_labels": 排序后的 y 坐标值列表
-            - "grids":    dict，键为指标名，值为 (num_y, num_x) 的 numpy 数组（缺失位置为 NaN）
+        Returns:
+            dict[str, Any]: 包含以下内容的字典：
+                - "df":       原始 DataFrame
+                - "x_labels": 排序后的 x 坐标值列表
+                - "y_labels": 排序后的 y 坐标值列表
+                - "grids":    dict，键为指标名，值为 (num_y, num_x) 的 numpy 数组（缺失位置为 NaN）。
         """
         x_labels = sorted(df["x"].dropna().unique().tolist())
         y_labels = sorted(df["y"].dropna().unique().tolist())

@@ -18,7 +18,14 @@ class ImageQualityScorer:
 
     @staticmethod
     def calc_visual_score(df: pd.DataFrame) -> float:
-        """基于高斯分布惩罚偏离中心亮度（128）的视觉得分。"""
+        """基于高斯分布惩罚偏离中心亮度（128）的视觉得分。
+
+        Args:
+            df (pd.DataFrame): 包含 "valid_mean" 列（有效像素亮度均值）的基础数据表。
+
+        Returns:
+            float: 计算出的综合视觉得分 (0.0 到 100.0)。
+        """
         scores: list[float] = []
         for brightness in df["valid_mean"].tolist():
             sigma = 60 if brightness >= 128 else 40
@@ -28,7 +35,14 @@ class ImageQualityScorer:
 
     @staticmethod
     def calc_consistency_score(df: pd.DataFrame) -> float:
-        """基于指数衰减惩罚偏离全局均值的一致性得分。"""
+        """基于指数衰减惩罚偏离全局均值的一致性得分。
+
+        Args:
+            df (pd.DataFrame): 包含 "valid_mean" 列的基础数据表。
+
+        Returns:
+            float: 计算出的一致性得分 (0.0 到 100.0)。
+        """
         global_mean = float(df["valid_mean"].mean()) if len(df) > 0 else 0.0
         scores: list[float] = []
         for brightness in df["valid_mean"].tolist():
@@ -42,15 +56,29 @@ class ImageQualityScorer:
 
     @staticmethod
     def calc_base_sharpness_score(fft_ratio: float) -> float:
-        """
-        基础清晰度得分。
+        """基础清晰度得分。
+
         目前规则比较简单：主要以 FFT 高频占总能量的比例直接作为总体综合得分。
+
+        Args:
+            fft_ratio (float): FFT 高频能量占比（0.0 到 1.0）。
+
+        Returns:
+            float: 直接映射为 0.0 到 100.0 之间的分数。
         """
         return float(fft_ratio * 100.0)
 
     @staticmethod
     def calc_uniformity_score(df: pd.DataFrame, sharpness_metrics_names: list[str]) -> float:
-        """根据所有清晰度算法指标的变异系数(CV)计算整体均匀度得分，CV越小均匀度越高。"""
+        """根据所有清晰度算法指标的变异系数(CV)计算整体均匀度得分，CV越小均匀度越高。
+
+        Args:
+            df (pd.DataFrame): 包含所有清洗度指标的特征数据表。
+            sharpness_metrics_names (list[str]): 清洗度指标名称列表。
+
+        Returns:
+            float: 批次内整体均匀度得分 (0.0 到 100.0)。
+        """
         cvs: list[float] = []
         for name in sharpness_metrics_names:
             if name not in df.columns:
@@ -67,9 +95,18 @@ class ImageQualityScorer:
     # ==================================================================
     @staticmethod
     def calc_shift_pair_score(dx: float, dy: float, response: float) -> tuple[float, float, float]:
-        """
-        单对图像拼缝的偏移评分。
-        返回: (总分 total_score, X方向得分 score_dx, Y方向得分 score_dy)
+        """单对图像拼缝的偏移评分。
+
+        Args:
+            dx (float): X方向平移量（像素）。
+            dy (float): Y方向平移量（像素）。
+            response (float): 相位相关的响应强度（置信度）。
+
+        Returns:
+            tuple[float, float, float]:
+                - total_score (float): 综合偏移总分。
+                - score_dx (float): X方向得分。
+                - score_dy (float): Y方向得分。
         """
         def _score(val: float) -> float:
             # 使用线性插值将位移量转化为 0-100 的得分（位移 0.1以内满分，超 5.0 得0分）
@@ -88,9 +125,17 @@ class ImageQualityScorer:
     # ==================================================================
     @staticmethod
     def calc_distortion_pair_score(rotation_deg: float, shear: float) -> tuple[float, float, float]:
-        """
-        单对图像畸变量打分。
-        返回: (总分 dist_score, 旋转得分 score_rotation, 切变得分 score_shear)
+        """单对图像畸变量打分。
+
+        Args:
+            rotation_deg (float): 两图相对旋转角度（度）。
+            shear (float): 两图相对切变量。
+
+        Returns:
+            tuple[float, float, float]:
+                - dist_score (float): 综合畸变总分。
+                - score_rotation (float): 旋转得分。
+                - score_shear (float): 切变得分。
         """
         # 旋转评分 (<=0.01满分, >=1.0零分)
         s_r = float(np.clip((abs(rotation_deg) - 1.0) / (0.01 - 1.0) * 100.0, 0.0, 100.0))
