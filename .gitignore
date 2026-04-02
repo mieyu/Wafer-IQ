@@ -1,5 +1,6 @@
 # data
 data/
+data_test/
 output/
 
 # python cache
@@ -19,6 +20,7 @@ env/
 # IDE
 .idea/
 .vscode/
+.vs/
 
 # generated outputs
 output/
