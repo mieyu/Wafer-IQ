@@ -41,7 +41,7 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
         data_dir (Path): 待分析的特定晶圆子目录路径。
         output_dir (Path): 对应此晶圆结果输出的目录路径。
     """
-    calc       = ImageQualityCalculator()
+    calculator       = ImageQualityCalculator()
     reporter   = ImageQualityReporter(output_dir)
 
     logger.info(f"══════════════════════════════════════════════")
@@ -49,7 +49,7 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
     logger.info(f"══════════════════════════════════════════════")
 
     # ── 读图一次，滑动窗口计算所有指标 ────────────────────────────────
-    df = calc.batch_calculate(
+    df = calculator.batch_calculate(
         data_dir,
         yaml_filename=YAML_FILENAME,
         stitch_direction=STITCH_DIRECTION,
@@ -60,14 +60,14 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
         return
 
     # ── 亮度报告 ──────────────────────────────────────────────────────
-    brightness_metrics = calc.get_brightness_metrics(df, data_dir=data_dir)
+    brightness_metrics = calculator.get_brightness_metrics(df, data_dir=data_dir)
     brightness_outputs = reporter.generate_brightness_all(df, brightness_metrics)
     logger.info(f"[{data_dir.name}][亮度] 报告已生成：")
     for key, path in brightness_outputs.items():
         logger.info(f"  [{key}] {path}")
 
     # ── 清晰度报告 ────────────────────────────────────────────────────
-    sharpness_metrics = calc.get_sharpness_metrics(df)
+    sharpness_metrics = calculator.get_sharpness_metrics(df)
     grid_data = ImageQualityDataUtils.build_grid(df, metric_names=["laplacian", "tenengrad", "fft", "brenner"])
     sharpness_outputs = reporter.generate_sharpness_all(df, sharpness_metrics, grid_data)
     logger.info(f"[{data_dir.name}][清晰度] 报告已生成：")
@@ -79,7 +79,7 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
             logger.info(f"  [{key}] {val}")
 
     # ── 位移偏移报告 ──────────────────────────────────────────────────
-    shift_metrics = calc.get_shift_metrics(df)
+    shift_metrics = calculator.get_shift_metrics(df)
     shift_outputs = reporter.generate_shift_all(df, shift_metrics)
     logger.info(f"[{data_dir.name}][位移偏移] 报告已生成：")
     for key, val in shift_outputs.items():
@@ -90,7 +90,7 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
             logger.info(f"  [{key}] {val}")
 
     # ── 畸变报告 ──────────────────────────────────────────────────────
-    distortion_metrics = calc.get_distortion_metrics(df)
+    distortion_metrics = calculator.get_distortion_metrics(df)
     distortion_outputs = reporter.generate_distortion_all(df, distortion_metrics)
     logger.info(f"[{data_dir.name}][畸变] 报告已生成：")
     for key, val in distortion_outputs.items():
@@ -143,8 +143,8 @@ def main() -> None:
         output_sub = output_root / sub_dir.name
         try:
             analyze_one(sub_dir, output_sub)
-        except Exception as exc:
-            logger.error(f"[{sub_dir.name}] 分析过程中出现异常，已跳过：{exc}", exc_info=True)
+        except Exception as exception:
+            logger.error(f"[{sub_dir.name}] 分析过程中出现异常，已跳过：{exception}", exc_info=True)
 
     logger.info(f"🎉 所有 {len(sub_dirs)} 个目录分析完成！输出位于：{output_root}")
 

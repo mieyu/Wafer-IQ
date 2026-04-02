@@ -225,16 +225,16 @@ class ImageQualityReporter:
         builder.section("数据集信息")
         builder.field("数据目录", metrics.get("data_dir", ""))
         builder.field("图像总数", str(metrics["total_images"]))
-        builder.field("纯背景图片数", str(metrics["pure_bg_count"]))
-        builder.field("半背景图片数", str(metrics["half_bg_count"]))
+        builder.field("纯背景图片数", str(metrics["pure_background_count"]))
+        builder.field("半背景图片数", str(metrics["half_background_count"]))
         builder.field("正常区域图片数", str(metrics["normal_count"]))
         builder.blank()
 
         # 亮度汇总（非纯背景）
         builder.section("亮度汇总 (非纯背景)")
-        builder.field("平均亮度", f"{metrics['avg_brightness_all']:.2f}")
-        builder.field("亮度标准差", f"{metrics['std_brightness_all']:.2f}")
-        builder.field("变异系数(CV)", f"{metrics['cv_all']:.2f}%")
+        builder.field("平均亮度", f"{metrics['average_brightness_all']:.2f}")
+        builder.field("亮度标准差", f"{metrics['standard_deviation_brightness_all']:.2f}")
+        builder.field("变异系数(CV)", f"{metrics['coefficient_of_variation_all']:.2f}%")
         builder.field(
             f"高亮图片数 (>={metrics['high_brightness_threshold']})",
             str(metrics["high_brightness_count"]),
@@ -246,12 +246,12 @@ class ImageQualityReporter:
         builder.section("正常区域统计")
         builder.field("均值", f"{metrics['mean_brightness']:.2f}")
         builder.field("中位数", f"{metrics['median_brightness']:.2f}")
-        builder.field("标准差", f"{metrics['std_brightness']:.2f}")
+        builder.field("标准差", f"{metrics['standard_deviation_brightness']:.2f}")
         builder.field(
             "亮度范围",
             f"[{metrics['min_brightness']:.2f}, {metrics['max_brightness']:.2f}]",
         )
-        builder.field("变异系数(CV)", f"{metrics['cv_percent']:.2f}%")
+        builder.field("变异系数(CV)", f"{metrics['coefficient_of_variation_percent']:.2f}%")
         builder.blank()
 
         # 异常值统计
@@ -421,19 +421,19 @@ class ImageQualityReporter:
             grid_rows, grid_cols = len(y_labels), len(x_labels)
 
             grid     = np.full((grid_rows, grid_cols), np.nan)
-            susp_grid = np.zeros((grid_rows, grid_cols), dtype=bool)
+            suspicious_grid = np.zeros((grid_rows, grid_cols), dtype=bool)
 
             for _, row in valid.iterrows():
-                ri, ci = y_to_row[row["y"]], x_to_col[row["x"]]
-                grid[ri, ci] = row[col]
+                row_index, column_index = y_to_row[row["y"]], x_to_col[row["x"]]
+                grid[row_index, column_index] = row[col]
                 if "shift_suspicious" in valid.columns and row.get("shift_suspicious", False):
-                    susp_grid[ri, ci] = True
+                    suspicious_grid[row_index, column_index] = True
 
             mean_val = float(np.nanmean(grid))
-            n_susp   = int(susp_grid.sum())
+            suspicious_count   = int(suspicious_grid.sum())
             title = (
                 f"{label}  |  共 {len(valid)} 对  |  均值 {mean_val:+.3f} px"
-                + (f"  |  ⚠ SSIM异常 {n_susp} 对" if n_susp > 0 else "")
+                + (f"  |  ⚠ SSIM异常 {suspicious_count} 对" if suspicious_count > 0 else "")
             )
 
             fig_w, fig_h = self._calc_figsize(grid_rows, grid_cols)
@@ -446,7 +446,7 @@ class ImageQualityReporter:
                 x_labels=x_labels, y_labels=y_labels,
                 title=title, cmap="RdBu_r",
                 cbar_label="px", fmt="+.2f",
-                suspicious_grid=susp_grid,
+                suspicious_grid=suspicious_grid,
             )
             fig.tight_layout()
 
@@ -535,7 +535,7 @@ class ImageQualityReporter:
     def save_distortion_heatmap(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
         """畸变评分空间热图（暗色主题，含数值标注）。"""
         out_dir = self._ensure_dir(self.distortion_dir)
-        valid   = stats_df.dropna(subset=["dist_score", "x", "y"])
+        valid   = stats_df.dropna(subset=["distortion_score", "x", "y"])
 
         if valid.empty:
             fig, ax = plt.subplots(figsize=(10, 8))
@@ -552,11 +552,11 @@ class ImageQualityReporter:
             grid_rows, grid_cols = len(y_labels), len(x_labels)
             grid = np.full((grid_rows, grid_cols), np.nan)
             for _, row in valid.iterrows():
-                grid[y_to_row[row["y"]], x_to_col[row["x"]]] = row["dist_score"]
+                grid[y_to_row[row["y"]], x_to_col[row["x"]]] = row["distortion_score"]
 
             mean_val = float(np.nanmean(grid))
-            n_total  = int(np.sum(~np.isnan(grid)))
-            title = f"畸变评分热图  |  共 {n_total} 对  |  均值 {mean_val:.2f} 分"
+            total_count  = int(np.sum(~np.isnan(grid)))
+            title = f"畸变评分热图  |  共 {total_count} 对  |  均值 {mean_val:.2f} 分"
 
             fig_w, fig_h = self._calc_figsize(grid_rows, grid_cols)
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
@@ -582,10 +582,10 @@ class ImageQualityReporter:
 
     def save_distortion_histograms(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
         """旋转角 / 切变量分布直方图（2×1 布局）。"""
-        valid = stats_df.dropna(subset=["dist_rotation_deg", "dist_shear"])
+        valid = stats_df.dropna(subset=["distortion_rotation_degree", "distortion_shear"])
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle("晶圆畸变 — 旋转角 / 切变分布", fontsize=14)
-        for ax, col, label in zip(axes, ["dist_rotation_deg", "dist_shear"], ["旋转角 (°)", "切变量"]):
+        for ax, col, label in zip(axes, ["distortion_rotation_degree", "distortion_shear"], ["旋转角 (°)", "切变量"]):
             if valid.empty:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center")
                 continue
@@ -619,16 +619,16 @@ class ImageQualityReporter:
         builder.field("参与双图计算的图块对数", str(metrics.get("total_pairs", 0)))
         builder.field(
             "SIFT 特征提取失败对数",
-            f"{metrics.get('n_failed', 0)} ({metrics.get('dist_failed_ratio', 0):.1f}%)",
+            f"{metrics.get('failed_count', 0)} ({metrics.get('distortion_failed_ratio', 0):.1f}%)",
         )
         builder.blank()
 
         # 畸变统计
         builder.section("畸变统计")
-        builder.field("平均畸变评分", f"{metrics.get('dist_score_mean', 0):.2f} 分")
-        builder.field("旋转角均值", f"{metrics.get('dist_rotation_mean', 0):+.4f} °")
-        builder.field("切变量均值", f"{metrics.get('dist_shear_mean', 0):+.4f}")
-        builder.field("评分标准差", f"{metrics.get('dist_score_std', 0):.2f}")
+        builder.field("平均畸变评分", f"{metrics.get('distortion_score_mean', 0):.2f} 分")
+        builder.field("旋转角均值", f"{metrics.get('distortion_rotation_mean', 0):+.4f} °")
+        builder.field("切变量均值", f"{metrics.get('distortion_shear_mean', 0):+.4f}")
+        builder.field("评分标准差", f"{metrics.get('distortion_score_std', 0):.2f}")
         builder.blank()
 
         return builder.build()
@@ -721,10 +721,10 @@ class ImageQualityReporter:
         if df.empty:
             self._plot_empty(ax, "亮度直方图")
             return
-        b = df["valid_mean"]
-        ax.hist(b, bins=50, color="skyblue", edgecolor="black", alpha=0.7)
-        ax.axvline(b.mean(),   color="red",   linestyle="--", linewidth=2, label="均值")
-        ax.axvline(b.median(), color="green", linestyle="--", linewidth=2, label="中位数")
+        brightness_values = df["valid_mean"]
+        ax.hist(brightness_values, bins=50, color="skyblue", edgecolor="black", alpha=0.7)
+        ax.axvline(brightness_values.mean(),   color="red",   linestyle="--", linewidth=2, label="均值")
+        ax.axvline(brightness_values.median(), color="green", linestyle="--", linewidth=2, label="中位数")
         ax.set_title("亮度直方图")
         ax.set_xlabel("亮度")
         ax.set_ylabel("数量")
@@ -757,11 +757,11 @@ class ImageQualityReporter:
             self._plot_empty(ax, "离群点分布图")
             return
         mean_val = float(df["valid_mean"].mean())
-        std_val  = self._safe_std_local(df["valid_mean"])
-        normal    = df[(df["valid_mean"] >= mean_val - std_val)   & (df["valid_mean"] <= mean_val + 2 * std_val)]
-        dark      = df[(df["valid_mean"] <  mean_val - std_val)   & (df["valid_mean"] >= mean_val - 3 * std_val)]
-        very_dark = df[ df["valid_mean"] <  mean_val - 3 * std_val]
-        bright    = df[ df["valid_mean"] >  mean_val + 2 * std_val]
+        standard_deviation_value  = self._safe_std_local(df["valid_mean"])
+        normal    = df[(df["valid_mean"] >= mean_val - standard_deviation_value)   & (df["valid_mean"] <= mean_val + 2 * standard_deviation_value)]
+        dark      = df[(df["valid_mean"] <  mean_val - standard_deviation_value)   & (df["valid_mean"] >= mean_val - 3 * standard_deviation_value)]
+        very_dark = df[ df["valid_mean"] <  mean_val - 3 * standard_deviation_value]
+        bright    = df[ df["valid_mean"] >  mean_val + 2 * standard_deviation_value]
         ax.scatter(normal["x"],    normal["y"],    c="green",  s=20, alpha=0.5, label="正常")
         ax.scatter(dark["x"],      dark["y"],      c="orange", s=30, alpha=0.7, label="偏暗")
         ax.scatter(very_dark["x"], very_dark["y"], c="red",    s=50, marker="X", label="极暗")

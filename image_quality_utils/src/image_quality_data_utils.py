@@ -54,8 +54,8 @@ class ImageQualityDataUtils:
                 for v in meta["views"]
             }
             return {"overlap_px": overlap_px, "views": views}
-        except Exception as exc:
-            logger.error(f"解析 YAML 配置失败 [{yaml_path}]：{exc}")
+        except Exception as exception:
+            logger.error(f"解析 YAML 配置失败 [{yaml_path}]：{exception}")
             return {}
 
     # ==================================================================
@@ -104,10 +104,10 @@ class ImageQualityDataUtils:
         """
         x_coords = sorted(df["x"].dropna().unique().tolist())
         y_coords = sorted(df["y"].dropna().unique().tolist())
-        x_index = {x: idx for idx, x in enumerate(x_coords)}
-        y_index = {y: idx for idx, y in enumerate(y_coords)}
+        index_x = {x: index for index, x in enumerate(x_coords)}
+        index_y = {y: index for index, y in enumerate(y_coords)}
         coord_set = set(zip(df["x"], df["y"]))
-        return x_coords, y_coords, x_index, y_index, coord_set
+        return x_coords, y_coords, index_x, index_y, coord_set
 
     @staticmethod
     def is_edge_position(
@@ -115,8 +115,8 @@ class ImageQualityDataUtils:
         y: Any,
         x_coords: list[Any],
         y_coords: list[Any],
-        x_index: dict[Any, int],
-        y_index: dict[Any, int],
+        index_x: dict[Any, int],
+        index_y: dict[Any, int],
         coord_set: set[tuple[Any, Any]],
     ) -> bool:
         """基于全局构建好的坐标索引信息，判断当前给定的 (x, y) 是否位于边缘位置。
@@ -128,8 +128,8 @@ class ImageQualityDataUtils:
             y (Any): 当前的 y 坐标值。
             x_coords (list[Any]): 预构建的 x 坐标列表。
             y_coords (list[Any]): 预构建的 y 坐标列表。
-            x_index (dict[Any, int]): 预构建的 x 坐标索引字典。
-            y_index (dict[Any, int]): 预构建的 y 坐标索引字典。
+            index_x (dict[Any, int]): 预构建的 x 坐标索引字典。
+            index_y (dict[Any, int]): 预构建的 y 坐标索引字典。
             coord_set (set[tuple[Any, Any]]): 预构建的坐标点集合。
 
         Returns:
@@ -137,20 +137,20 @@ class ImageQualityDataUtils:
         """
         if pd.isna(x) or pd.isna(y):
             return False
-        if x not in x_index or y not in y_index:
+        if x not in index_x or y not in index_y:
             return False
 
-        ix = x_index[x]
-        iy = y_index[y]
+        current_index_x = index_x[x]
+        current_index_y = index_y[y]
 
-        x_prev = x_coords[ix - 1] if ix > 0 else None
-        x_next = x_coords[ix + 1] if ix < len(x_coords) - 1 else None
-        y_prev = y_coords[iy - 1] if iy > 0 else None
-        y_next = y_coords[iy + 1] if iy < len(y_coords) - 1 else None
+        x_previous = x_coords[current_index_x - 1] if current_index_x > 0 else None
+        x_next = x_coords[current_index_x + 1] if current_index_x < len(x_coords) - 1 else None
+        y_previous = y_coords[current_index_y - 1] if current_index_y > 0 else None
+        y_next = y_coords[current_index_y + 1] if current_index_y < len(y_coords) - 1 else None
 
-        missing_left  = x_prev is None or (x_prev, y) not in coord_set
+        missing_left  = x_previous is None or (x_previous, y) not in coord_set
         missing_right = x_next is None or (x_next, y) not in coord_set
-        missing_up    = y_prev is None or (x, y_prev) not in coord_set
+        missing_up    = y_previous is None or (x, y_previous) not in coord_set
         missing_down  = y_next is None or (x, y_next) not in coord_set
         return missing_left or missing_right or missing_up or missing_down
 
@@ -173,24 +173,24 @@ class ImageQualityDataUtils:
                 - "df":       原始 DataFrame
                 - "x_labels": 排序后的 x 坐标值列表
                 - "y_labels": 排序后的 y 坐标值列表
-                - "grids":    dict，键为指标名，值为 (num_y, num_x) 的 numpy 数组（缺失位置为 NaN）。
+                - "grids":    dict，键为指标名，值为 (number_of_y, number_of_x) 的 numpy 数组（缺失位置为 NaN）。
         """
         x_labels = sorted(df["x"].dropna().unique().tolist())
         y_labels = sorted(df["y"].dropna().unique().tolist())
         x_to_col = {x: i for i, x in enumerate(x_labels)}
         y_to_row = {y: i for i, y in enumerate(y_labels)}
 
-        num_x = len(x_labels)
-        num_y = len(y_labels)
-        grids = {name: np.full((num_y, num_x), np.nan) for name in metric_names}
+        number_of_x = len(x_labels)
+        number_of_y = len(y_labels)
+        grids = {name: np.full((number_of_y, number_of_x), np.nan) for name in metric_names}
 
         for row in df.itertuples():
-            col_idx = x_to_col[row.x]
-            row_idx = y_to_row[row.y]
+            column_index = x_to_col[row.x]
+            row_index = y_to_row[row.y]
             for name in metric_names:
-                val = getattr(row, name, None)
-                if val is not None and not (isinstance(val, float) and np.isnan(val)):
-                    grids[name][row_idx, col_idx] = val
+                value = getattr(row, name, None)
+                if value is not None and not (isinstance(value, float) and np.isnan(value)):
+                    grids[name][row_index, column_index] = value
 
         return {
             "df": df,
@@ -213,25 +213,25 @@ class ImageQualityDataUtils:
 
         # 根据有效图像的均值和标准差计算动态阈值
         valid_df = result[result["is_valid"] == True]
-        mean_val = float(valid_df["valid_mean"].mean()) if len(valid_df) > 0 else 0.0
-        std_val  = ImageQualityDataUtils.safe_std(valid_df["valid_mean"]) if len(valid_df) > 0 else 0.0
-        dark_threshold      = mean_val - std_val
-        very_dark_threshold = mean_val - 3 * std_val
+        mean_value = float(valid_df["valid_mean"].mean()) if len(valid_df) > 0 else 0.0
+        standard_deviation_value  = ImageQualityDataUtils.safe_std(valid_df["valid_mean"]) if len(valid_df) > 0 else 0.0
+        dark_threshold      = mean_value - standard_deviation_value
+        very_dark_threshold = mean_value - 3 * standard_deviation_value
 
         # 构建坐标索引以便判断是否是边缘位置
-        x_coords, y_coords, x_index, y_index, coord_set = ImageQualityDataUtils.build_coord_index(result)
+        x_coords, y_coords, index_x, index_y, coord_set = ImageQualityDataUtils.build_coord_index(result)
 
         def classify(row: pd.Series) -> str:
             # 只有在边缘的图像才可能是背景过渡区
             if not ImageQualityDataUtils.is_edge_position(
-                row["x"], row["y"], x_coords, y_coords, x_index, y_index, coord_set
+                row["x"], row["y"], x_coords, y_coords, index_x, index_y, coord_set
             ):
                 return "normal"
             # 根据动态阈值判定具体类型
             if float(row["valid_mean"]) < very_dark_threshold:
-                return "pure_bg"
+                return "pure_background"
             if float(row["valid_mean"]) < dark_threshold:
-                return "half_bg"
+                return "half_background"
             return "normal"
 
         result["region_type"] = result.apply(classify, axis=1)
