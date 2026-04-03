@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-
 from pathlib import Path
 from typing import Any
 
@@ -27,19 +26,30 @@ SHARPNESS_METRICS = ["laplacian", "tenengrad", "fft", "brenner"]
 
 # shift / distortion 结果的缺省值（第一列图像无前邻，填 NaN）
 _SHIFT_EMPTY: dict[str, Any] = {
-    "shift_delta_x": np.nan, "shift_delta_y": np.nan,
-    "shift_phase_response": np.nan, "shift_ssim_before": np.nan,
-    "shift_ssim_after": np.nan, "shift_ssim_delta": np.nan,
-    "shift_suspicious": np.nan, "shift_score": np.nan,
-    "shift_score_delta_x": np.nan, "shift_score_delta_y": np.nan,
+    "shift_delta_x": np.nan,
+    "shift_delta_y": np.nan,
+    "shift_phase_response": np.nan,
+    "shift_ssim_before": np.nan,
+    "shift_ssim_after": np.nan,
+    "shift_ssim_delta": np.nan,
+    "shift_suspicious": np.nan,
+    "shift_score": np.nan,
+    "shift_score_delta_x": np.nan,
+    "shift_score_delta_y": np.nan,
     "shift_bias_direction": "",
-    "shift_bias_ratio_x": np.nan, "shift_bias_ratio_y": np.nan,
+    "shift_bias_ratio_x": np.nan,
+    "shift_bias_ratio_y": np.nan,
 }
 _DISTORTION_EMPTY: dict[str, Any] = {
-    "distortion_rotation_degree": np.nan, "distortion_shear": np.nan,
-    "distortion_scale_x": np.nan, "distortion_scale_y": np.nan,
-    "distortion_inliers": np.nan, "distortion_method": "",
-    "distortion_score": np.nan, "distortion_score_rotation": np.nan, "distortion_score_shear": np.nan,
+    "distortion_rotation_degree": np.nan,
+    "distortion_shear": np.nan,
+    "distortion_scale_x": np.nan,
+    "distortion_scale_y": np.nan,
+    "distortion_inliers": np.nan,
+    "distortion_method": "",
+    "distortion_score": np.nan,
+    "distortion_score_rotation": np.nan,
+    "distortion_score_shear": np.nan,
 }
 
 
@@ -53,14 +63,14 @@ class ImageQualityCalculator:
         high_brightness_threshold: int = 100,
     ) -> None:
         """初始化计算器参数。
-        
+
         Args:
             background_threshold (int): 区分前景和背景的灰度阈值，低于此值认为是背景。
             valid_ratio_threshold (float): 有效像素（非背景）比例的最低阈值，用于判定图像是否包含足够有效信息。
             high_brightness_threshold (int): 高亮度判定阈值。
         """
-        self.background_threshold    = background_threshold
-        self.valid_ratio_threshold   = valid_ratio_threshold
+        self.background_threshold = background_threshold
+        self.valid_ratio_threshold = valid_ratio_threshold
         self.high_brightness_threshold = high_brightness_threshold
 
     # ==================================================================
@@ -111,7 +121,9 @@ class ImageQualityCalculator:
         logger.info(f"共找到 {len(image_files)} 张图像，开始单图分析...")
 
         # 构建 path → (col, row) 的反向映射，供后续使用
-        path_to_coord: dict[Path, tuple[int, int]] = {p: coord for coord, p in views.items() if p.exists()}
+        path_to_coord: dict[Path, tuple[int, int]] = {
+            p: coord for coord, p in views.items() if p.exists()
+        }
 
         single_results: dict[Path, dict[str, Any]] = {}
         gray_cache: dict[Path, np.ndarray] = {}
@@ -121,15 +133,23 @@ class ImageQualityCalculator:
         # 采用 ThreadPoolExecutor 并发执行单张图的读取和指标计算
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
             future_to_file = {
-                executor.submit(self._read_and_calculate_single, f, path_to_coord.get(f)): f
+                executor.submit(
+                    self._read_and_calculate_single, f, path_to_coord.get(f)
+                ): f
                 for f in image_files
             }
-            for future in tqdm(as_completed(future_to_file), total=len(image_files), desc="Single-image analysis"):
+            for future in tqdm(
+                as_completed(future_to_file),
+                total=len(image_files),
+                desc="Single-image analysis",
+            ):
                 f = future_to_file[future]
                 try:
                     result = future.result()
                     if result is not None:
-                        gray_cache[f] = result.pop("_gray")   # 单独存灰度图，不进 DataFrame
+                        gray_cache[f] = result.pop(
+                            "_gray"
+                        )  # 单独存灰度图，不进 DataFrame
                         single_results[f] = result
                 except Exception as exception:
                     logger.error(f"处理单图 {f.name} 时出错: {exception}")
@@ -143,10 +163,12 @@ class ImageQualityCalculator:
                 col_groups[coord[0]].append(path)
 
         sorted_cols = sorted(col_groups.keys())
-        dual_results: dict[Path, dict[str, Any]] = {}   # key = 图像路径
+        dual_results: dict[Path, dict[str, Any]] = {}  # key = 图像路径
         dual_tasks = []
 
-        logger.info(f"共 {len(sorted_cols)} 列，开始滑动窗口双图任务构造与多线程分析...")
+        logger.info(
+            f"共 {len(sorted_cols)} 列，开始滑动窗口双图任务构造与多线程分析..."
+        )
         prev_col: int | None = None
         for col in sorted_cols:
             curr_paths = col_groups[col]
@@ -157,13 +179,20 @@ class ImageQualityCalculator:
             else:
                 previous_paths = col_groups[prev_col]
                 # 按 row（YAML index 第二维）匹配同行相邻图块
-                previous_by_y = {path_to_coord[p][1]: p for p in previous_paths if p in path_to_coord}
-                current_by_y = {path_to_coord[p][1]: p for p in curr_paths if p in path_to_coord}
+                previous_by_y = {
+                    path_to_coord[p][1]: p for p in previous_paths if p in path_to_coord
+                }
+                current_by_y = {
+                    path_to_coord[p][1]: p for p in curr_paths if p in path_to_coord
+                }
 
                 for y, current_path in current_by_y.items():
                     if y not in previous_by_y:
                         # 当前行在前一列无对应图块
-                        dual_results[current_path] = {**_SHIFT_EMPTY, **_DISTORTION_EMPTY}
+                        dual_results[current_path] = {
+                            **_SHIFT_EMPTY,
+                            **_DISTORTION_EMPTY,
+                        }
                         continue
 
                     # 提取前后相邻图的路径及灰度缓存
@@ -172,34 +201,57 @@ class ImageQualityCalculator:
                     gray_current = gray_cache.get(current_path)
 
                     if gray_previous is None or gray_current is None:
-                        dual_results[current_path] = {**_SHIFT_EMPTY, **_DISTORTION_EMPTY}
+                        dual_results[current_path] = {
+                            **_SHIFT_EMPTY,
+                            **_DISTORTION_EMPTY,
+                        }
                         continue
 
                     # 将有上下文的图片对装入并发任务列表
-                    dual_tasks.append((current_path, gray_previous, gray_current, overlap_length, stitch_direction))
+                    dual_tasks.append(
+                        (
+                            current_path,
+                            gray_previous,
+                            gray_current,
+                            overlap_length,
+                            stitch_direction,
+                        )
+                    )
 
                 # 前一列中没有在当前列找到对应行的图块，也补空
                 for y, previous_path in previous_by_y.items():
                     if y not in current_by_y:
-                        dual_results[previous_path] = dual_results.get(previous_path, {**_SHIFT_EMPTY, **_DISTORTION_EMPTY})
+                        dual_results[previous_path] = dual_results.get(
+                            previous_path, {**_SHIFT_EMPTY, **_DISTORTION_EMPTY}
+                        )
 
             prev_col = col
 
         # 使用多线程执行双图 SIFT 匹配运算
-        def _execute_dual(current_path, gray_previous, gray_current, overlap, stitch):
+        def _execute_dual(current_path, gray_previous, gray_current, overlap, stitch) -> tuple[Path, dict[str, Any]]:
             shift = self.shift_calculate(gray_previous, gray_current, overlap, stitch)
-            distortion = self.distortion_calculate(gray_previous, gray_current, overlap, stitch, shift["shift_delta_x"], shift["shift_delta_y"])
+            distortion = self.distortion_calculate(
+                gray_previous,
+                gray_current,
+                overlap,
+                stitch,
+                shift["shift_delta_x"],
+                shift["shift_delta_y"],
+            )
             return current_path, {**shift, **distortion}
 
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
             future_to_current = {
-                executor.submit(_execute_dual, *task): task[0]
-                for task in dual_tasks
+                executor.submit(_execute_dual, *task): task[0] for task in dual_tasks
             }
-            for future in tqdm(as_completed(future_to_current), total=len(dual_tasks), desc="Dual-image SIFT & FFT analysis"):
-                current_path = future_to_current[future]
+            for d_future in tqdm(
+                as_completed(future_to_current),
+                total=len(dual_tasks),
+                desc="Dual-image SIFT & FFT analysis",
+            ):
+                current_path = future_to_current[d_future]
                 try:
-                    res = future.result()
+                    res = d_future.result()
                     dual_results[current_path] = res[1]
                 except Exception as exception:
                     logger.error(f"处理双图对 {current_path.name} 时出错: {exception}")
@@ -238,8 +290,8 @@ class ImageQualityCalculator:
         y = coord[1] if coord is not None else None
 
         return {
-            "_gray": gray,                              # 临时缓存，batch_calculate 中弹出
-            "filename":   image_path.name,
+            "_gray": gray,  # 临时缓存，batch_calculate 中弹出
+            "filename": image_path.name,
             "image_path": str(image_path),
             "x": x,
             "y": y,
@@ -263,19 +315,23 @@ class ImageQualityCalculator:
             dict[str, Any]: 亮度统计特征字典。
         """
         # 利用背景阈值提取有效前景像素
-        valid_mask  = gray > self.background_threshold
+        valid_mask = gray > self.background_threshold
         valid_ratio = float(np.sum(valid_mask) / gray.size)
         # 如果有效像素比例太低，置为空数组避免计算错误
-        valid_pixels = gray[valid_mask] if valid_ratio > 0.01 else np.array([], dtype=gray.dtype)
+        valid_pixels = (
+            gray[valid_mask] if valid_ratio > 0.01 else np.array([], dtype=gray.dtype)
+        )
         return {
             "mean_brightness": float(np.mean(gray)),
-            "std_brightness":  float(np.std(gray)),
-            "min_brightness":  float(np.min(gray)),
-            "max_brightness":  float(np.max(gray)),
-            "valid_ratio":     valid_ratio,
-            "valid_mean":      float(np.mean(valid_pixels)) if len(valid_pixels) > 0 else 0.0,
-            "valid_std":       float(np.std(valid_pixels))  if len(valid_pixels) > 0 else 0.0,
-            "is_valid":        valid_ratio > self.valid_ratio_threshold,
+            "std_brightness": float(np.std(gray)),
+            "min_brightness": float(np.min(gray)),
+            "max_brightness": float(np.max(gray)),
+            "valid_ratio": valid_ratio,
+            "valid_mean": (
+                float(np.mean(valid_pixels)) if len(valid_pixels) > 0 else 0.0
+            ),
+            "valid_std": float(np.std(valid_pixels)) if len(valid_pixels) > 0 else 0.0,
+            "is_valid": valid_ratio > self.valid_ratio_threshold,
         }
 
     def get_brightness_metrics(
@@ -303,49 +359,71 @@ class ImageQualityCalculator:
 
         pure_background_count = int((df["region_type"] == "pure_background").sum())
         half_background_count = int((df["region_type"] == "half_background").sum())
-        normal_count  = int((df["region_type"] == "normal").sum())
-        total_images  = int(len(df))
+        normal_count = int((df["region_type"] == "normal").sum())
+        total_images = int(len(df))
 
         # 排除纯背景后进行统计
         non_background_df = df[df["region_type"] != "pure_background"]
         normal_df = df[df["region_type"] == "normal"]
 
-        average_brightness_all = float(non_background_df["valid_mean"].mean()) if len(non_background_df) > 0 else 0.0
-        standard_deviation_brightness_all = ImageQualityDataUtils.safe_std(non_background_df["valid_mean"]) if len(non_background_df) > 0 else 0.0
+        average_brightness_all = (
+            float(non_background_df["valid_mean"].mean())
+            if len(non_background_df) > 0
+            else 0.0
+        )
+        standard_deviation_brightness_all = (
+            ImageQualityDataUtils.safe_std(non_background_df["valid_mean"])
+            if len(non_background_df) > 0
+            else 0.0
+        )
         # CV(变异系数) 反映数据的离散程度
-        coefficient_of_variation_all = (standard_deviation_brightness_all / average_brightness_all * 100) if average_brightness_all > 0 else 0.0
+        coefficient_of_variation_all = (
+            (standard_deviation_brightness_all / average_brightness_all * 100)
+            if average_brightness_all > 0
+            else 0.0
+        )
 
         if len(normal_df) > 0:
-            high_brightness_count = int((normal_df["valid_mean"] >= self.high_brightness_threshold).sum())
+            high_brightness_count = int(
+                (normal_df["valid_mean"] >= self.high_brightness_threshold).sum()
+            )
             high_brightness_ratio = high_brightness_count / len(normal_df) * 100
         else:
             high_brightness_count = 0
             high_brightness_ratio = 0.0
 
         # 计算特定的打分
-        score_visual      = ImageQualityScorer.calculate_visual_score(non_background_df)
-        score_consistency = ImageQualityScorer.calculate_consistency_score(non_background_df)
+        score_visual = ImageQualityScorer.calculate_visual_score(non_background_df)
+        score_consistency = ImageQualityScorer.calculate_consistency_score(
+            non_background_df
+        )
 
         # 统计正常区域的高级指标及偏离中心分布的异常数量
         if len(normal_df) > 0:
-            mean_brightness   = float(normal_df["valid_mean"].mean())
+            mean_brightness = float(normal_df["valid_mean"].mean())
             median_brightness = float(normal_df["valid_mean"].median())
-            standard_deviation_brightness = ImageQualityDataUtils.safe_std(normal_df["valid_mean"])
-            min_brightness    = float(normal_df["valid_mean"].min())
-            max_brightness    = float(normal_df["valid_mean"].max())
-            coefficient_of_variation_percent = (standard_deviation_brightness / mean_brightness * 100) if mean_brightness > 0 else 0.0
-            threshold_low     = mean_brightness - 3 * standard_deviation_brightness
-            threshold_high    = mean_brightness + 2 * standard_deviation_brightness
-            dark_threshold    = mean_brightness - standard_deviation_brightness
-            outliers_low      = normal_df[normal_df["valid_mean"] < threshold_low]
-            outliers_high     = normal_df[normal_df["valid_mean"] > threshold_high]
-            dark_regions      = normal_df[normal_df["valid_mean"] < dark_threshold]
+            standard_deviation_brightness = ImageQualityDataUtils.safe_std(
+                normal_df["valid_mean"]
+            )
+            min_brightness = float(normal_df["valid_mean"].min())
+            max_brightness = float(normal_df["valid_mean"].max())
+            coefficient_of_variation_percent = (
+                (standard_deviation_brightness / mean_brightness * 100)
+                if mean_brightness > 0
+                else 0.0
+            )
+            threshold_low = mean_brightness - 3 * standard_deviation_brightness
+            threshold_high = mean_brightness + 2 * standard_deviation_brightness
+            dark_threshold = mean_brightness - standard_deviation_brightness
+            outliers_low = normal_df[normal_df["valid_mean"] < threshold_low]
+            outliers_high = normal_df[normal_df["valid_mean"] > threshold_high]
+            dark_regions = normal_df[normal_df["valid_mean"] < dark_threshold]
             dark_ratio_percent = len(dark_regions) / len(normal_df) * 100
         else:
             mean_brightness = median_brightness = standard_deviation_brightness = 0.0
-            min_brightness  = max_brightness = coefficient_of_variation_percent = 0.0
-            threshold_low   = threshold_high = dark_threshold = 0.0
-            outliers_low    = outliers_high = dark_regions = pd.DataFrame()
+            min_brightness = max_brightness = coefficient_of_variation_percent = 0.0
+            threshold_low = threshold_high = dark_threshold = 0.0
+            outliers_low = outliers_high = dark_regions = pd.DataFrame()
             dark_ratio_percent = 0.0
 
         # 解析并记录数据来源目录
@@ -383,8 +461,6 @@ class ImageQualityCalculator:
             "data_dir": resolved_data_dir,
         }
 
-
-
     # ==================================================================
     # 清晰度计算
     # ==================================================================
@@ -400,11 +476,13 @@ class ImageQualityCalculator:
         """
         fft_value = ImageQualityImageUtils.calculate_fft_high_frequency_ratio(gray)
         return {
-            "laplacian":       ImageQualityImageUtils.laplacian_variance(gray),
-            "tenengrad":       ImageQualityImageUtils.tenengrad(gray),
-            "fft":             fft_value,
-            "brenner":         ImageQualityImageUtils.brenner_gradient(gray),
-            "sharpness_score": ImageQualityScorer.calculate_base_sharpness_score(fft_value),
+            "laplacian": ImageQualityImageUtils.laplacian_variance(gray),
+            "tenengrad": ImageQualityImageUtils.tenengrad(gray),
+            "fft": fft_value,
+            "brenner": ImageQualityImageUtils.brenner_gradient(gray),
+            "sharpness_score": ImageQualityScorer.calculate_base_sharpness_score(
+                fft_value
+            ),
         }
 
     def get_sharpness_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
@@ -419,22 +497,27 @@ class ImageQualityCalculator:
         if df.empty:
             return {}
         metrics: dict[str, Any] = {
-            "total_images":      int(len(df)),
-            "sharpness_score":   float(df["sharpness_score"].mean()) if "sharpness_score" in df.columns else 0.0,
-            "uniformity_score":  ImageQualityScorer.calculate_uniformity_score(df, SHARPNESS_METRICS),
+            "total_images": int(len(df)),
+            "sharpness_score": (
+                float(df["sharpness_score"].mean())
+                if "sharpness_score" in df.columns
+                else 0.0
+            ),
+            "uniformity_score": ImageQualityScorer.calculate_uniformity_score(
+                df, SHARPNESS_METRICS
+            ),
         }
         # 遍历所有支持的清晰度算法，并分别计算统计量
         for name in SHARPNESS_METRICS:
             if name not in df.columns:
                 continue
             col = df[name].dropna()
-            metrics[f"{name}_mean"]   = float(col.mean())
-            metrics[f"{name}_std"]    = ImageQualityDataUtils.safe_std(col)
+            metrics[f"{name}_mean"] = float(col.mean())
+            metrics[f"{name}_std"] = ImageQualityDataUtils.safe_std(col)
             metrics[f"{name}_median"] = float(col.median())
-            metrics[f"{name}_min"]    = float(col.min())
-            metrics[f"{name}_max"]    = float(col.max())
+            metrics[f"{name}_min"] = float(col.min())
+            metrics[f"{name}_max"] = float(col.max())
         return metrics
-
 
     # ==================================================================
     # 位移偏移计算（双图）
@@ -461,9 +544,13 @@ class ImageQualityCalculator:
             dict[str, Any]: 计算得出的拼合处坐标系平移变量 'dx'，'dy' 以及结构相似度的诊断日志集合。
         """
         # 提取重叠的感兴趣区域(ROI)
-        roi_a, roi_b = ImageQualityImageUtils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
+        roi_a, roi_b = ImageQualityImageUtils.extract_roi(
+            gray_prev, gray_curr, overlap_length, stitch_direction
+        )
         # 通过相位相关法计算平移量及置信度响应
-        delta_x, delta_y, response = ImageQualityImageUtils.phase_correlation(roi_a, roi_b)
+        delta_x, delta_y, response = ImageQualityImageUtils.phase_correlation(
+            roi_a, roi_b
+        )
 
         # 异常巨大偏移量拦截
         # 物理上，相邻晶圆图像的实际偏差只会在小范围（通常十几像素）。
@@ -471,7 +558,9 @@ class ImageQualityCalculator:
         # 这种数据不仅无意义，还会严重带偏全局的 mean 和 std 统计。
         max_valid_shift = max(50.0, overlap_length * 0.25)
         if abs(delta_x) > max_valid_shift or abs(delta_y) > max_valid_shift:
-            logger.debug(f"丢弃异常巨大的平移解算结果: delta_x={delta_x:.1f}, delta_y={delta_y:.1f}")
+            logger.debug(
+                f"丢弃异常巨大的平移解算结果: delta_x={delta_x:.1f}, delta_y={delta_y:.1f}"
+            )
             empty = {**_SHIFT_EMPTY}
             empty["shift_suspicious"] = True
             empty["shift_bias_direction"] = "匹配失败(偏移异常过大)"
@@ -479,22 +568,30 @@ class ImageQualityCalculator:
 
         # SSIM 验证
         height, width = roi_a.shape[:2]
-        ssim_before = ImageQualityImageUtils.calc_ssim(roi_a, roi_b)
+        ssim_before = ImageQualityImageUtils.calculate_ssim(roi_a, roi_b)
         # 使用算出的平移量构建仿射矩阵并对齐图像 B
-        T = np.float32([[1, 0, -delta_x], [0, 1, -delta_y]])
-        roi_b_aligned = cv2.warpAffine(roi_b, T, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-        
+        T = np.array([[1, 0, -delta_x], [0, 1, -delta_y]], dtype=np.float32)
+        roi_b_aligned = cv2.warpAffine(
+            roi_b,
+            T,
+            (width, height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+
         # 裁剪掉因平移产生的无效边缘，重新计算 SSIM
         margin_x, margin_y = int(abs(delta_x)) + 1, int(abs(delta_y)) + 1
         x1, x2, y1, y2 = margin_x, width - margin_x, margin_y, height - margin_y
         crop_a = roi_a[y1:y2, x1:x2] if x2 > x1 and y2 > y1 else roi_a
         crop_b = roi_b_aligned[y1:y2, x1:x2] if x2 > x1 and y2 > y1 else roi_b_aligned
-        ssim_after = ImageQualityImageUtils.calc_ssim(crop_a, crop_b)
+        ssim_after = ImageQualityImageUtils.calculate_ssim(crop_a, crop_b)
         # 如果对齐后 SSIM 反而下降，视为可疑计算结果
         suspicious = bool((ssim_after - ssim_before) < 0)
 
         # 偏移评分交由评分引擎
-        total, score_delta_x, score_delta_y = ImageQualityScorer.calculate_shift_pair_score(delta_x, delta_y, response)
+        total, score_delta_x, score_delta_y = (
+            ImageQualityScorer.calculate_shift_pair_score(delta_x, delta_y, response)
+        )
 
         # 分析偏移的主要方向
         abs_delta_x, abs_delta_y = abs(delta_x), abs(delta_y)
@@ -502,7 +599,10 @@ class ImageQualityCalculator:
         if total_offset < 1e-6:
             bias_ratio_x, bias_ratio_y, bias_direction = 0.5, 0.5, "无明显偏移"
         else:
-            bias_ratio_x, bias_ratio_y = abs_delta_x / total_offset, abs_delta_y / total_offset
+            bias_ratio_x, bias_ratio_y = (
+                abs_delta_x / total_offset,
+                abs_delta_y / total_offset,
+            )
             if bias_ratio_x >= 0.7:
                 bias_direction = "主要偏向 X 轴（水平漂移）"
             elif bias_ratio_y >= 0.7:
@@ -511,19 +611,19 @@ class ImageQualityCalculator:
                 bias_direction = f"X/Y 混合偏移（X占{bias_ratio_x*100:.0f}% Y占{bias_ratio_y*100:.0f}%）"
 
         return {
-            "shift_delta_x":         float(delta_x),
-            "shift_delta_y":         float(delta_y),
-            "shift_phase_response":  float(response),
-            "shift_ssim_before":     round(ssim_before, 4),
-            "shift_ssim_after":      round(ssim_after, 4),
-            "shift_ssim_delta":      round(ssim_after - ssim_before, 4),
-            "shift_suspicious":      suspicious,
-            "shift_score":           round(total, 2),
-            "shift_score_delta_x":   round(score_delta_x, 2),
-            "shift_score_delta_y":   round(score_delta_y, 2),
-            "shift_bias_direction":  bias_direction,
-            "shift_bias_ratio_x":    round(bias_ratio_x, 4),
-            "shift_bias_ratio_y":    round(bias_ratio_y, 4),
+            "shift_delta_x": float(delta_x),
+            "shift_delta_y": float(delta_y),
+            "shift_phase_response": float(response),
+            "shift_ssim_before": round(ssim_before, 4),
+            "shift_ssim_after": round(ssim_after, 4),
+            "shift_ssim_delta": round(ssim_after - ssim_before, 4),
+            "shift_suspicious": suspicious,
+            "shift_score": round(total, 2),
+            "shift_score_delta_x": round(score_delta_x, 2),
+            "shift_score_delta_y": round(score_delta_y, 2),
+            "shift_bias_direction": bias_direction,
+            "shift_bias_ratio_x": round(bias_ratio_x, 4),
+            "shift_bias_ratio_y": round(bias_ratio_y, 4),
         }
 
     def get_shift_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
@@ -538,14 +638,18 @@ class ImageQualityCalculator:
         valid = df.dropna(subset=["shift_delta_x", "shift_delta_y"])
         if valid.empty:
             return {}
-        suspicious_count = int(valid["shift_suspicious"].sum()) if "shift_suspicious" in valid.columns else 0
+        suspicious_count = (
+            int(valid["shift_suspicious"].sum())
+            if "shift_suspicious" in valid.columns
+            else 0
+        )
         return {
-            "total_pairs":          int(len(valid)),
-            "shift_score_mean":     float(valid["shift_score"].mean()),
-            "shift_dx_mean":        float(valid["shift_delta_x"].mean()),
-            "shift_dy_mean":        float(valid["shift_delta_y"].mean()),
-            "shift_dx_std":         ImageQualityDataUtils.safe_std(valid["shift_delta_x"]),
-            "shift_dy_std":         ImageQualityDataUtils.safe_std(valid["shift_delta_y"]),
+            "total_pairs": int(len(valid)),
+            "shift_score_mean": float(valid["shift_score"].mean()),
+            "shift_dx_mean": float(valid["shift_delta_x"].mean()),
+            "shift_dy_mean": float(valid["shift_delta_y"].mean()),
+            "shift_dx_std": ImageQualityDataUtils.safe_std(valid["shift_delta_x"]),
+            "shift_dy_std": ImageQualityDataUtils.safe_std(valid["shift_delta_y"]),
             "shift_suspicious_count": suspicious_count,
             "shift_suspicious_ratio": suspicious_count / len(valid) * 100,
         }
@@ -578,21 +682,32 @@ class ImageQualityCalculator:
         Returns:
             dict[str, Any]: OpenCV 单应性评估提取出的两图间扭曲模型。包含旋转角与错切变量，或在匹配抛锚时反推缺失数据。
         """
-        roi_a, roi_b = ImageQualityImageUtils.extract_roi(gray_prev, gray_curr, overlap_length, stitch_direction)
+        roi_a, roi_b = ImageQualityImageUtils.extract_roi(
+            gray_prev, gray_curr, overlap_length, stitch_direction
+        )
         empty = {**_DISTORTION_EMPTY}
 
         # 1. 提取 SIFT 特征
-        sift = cv2.SIFT_create(nfeatures=2000)
+        sift = cv2.SIFT_create(nfeatures=2000)  # type: ignore[attr-defined]
         keypoints_a, descriptors_a = sift.detectAndCompute(roi_a, None)
         keypoints_b, descriptors_b = sift.detectAndCompute(roi_b, None)
 
-        if descriptors_a is None or descriptors_b is None or len(keypoints_a) < 4 or len(keypoints_b) < 4:
+        if (
+            descriptors_a is None
+            or descriptors_b is None
+            or len(keypoints_a) < 4
+            or len(keypoints_b) < 4
+        ):
             empty["distortion_method"] = "N/A(特征点不足)"
             return empty
 
         # 2. KNN 匹配特征点，采用 Lowe's ratio test 剔除模糊匹配
         brute_force_matcher = cv2.BFMatcher(cv2.NORM_L2)
-        good_matches = [m for m, n in brute_force_matcher.knnMatch(descriptors_a, descriptors_b, k=2) if m.distance < 0.75 * n.distance]
+        good_matches = [
+            m
+            for m, n in brute_force_matcher.knnMatch(descriptors_a, descriptors_b, k=2)
+            if m.distance < 0.75 * n.distance
+        ]
         if len(good_matches) < 4:
             empty["distortion_method"] = f"N/A(匹配不足:{len(good_matches)})"
             return empty
@@ -600,18 +715,38 @@ class ImageQualityCalculator:
         # 3. 利用之前算出的位移平移量 (prior) 作为先验知识，进一步剔除不合理的匹配
         distance_threshold = 20.0
         filtered_matches = [
-            m for m in good_matches
-            if abs(keypoints_a[m.queryIdx].pt[0] - keypoints_b[m.trainIdx].pt[0] - delta_x_prior) <= distance_threshold
-            and abs(keypoints_a[m.queryIdx].pt[1] - keypoints_b[m.trainIdx].pt[1] - delta_y_prior) <= distance_threshold
+            m
+            for m in good_matches
+            if abs(
+                keypoints_a[m.queryIdx].pt[0]
+                - keypoints_b[m.trainIdx].pt[0]
+                - delta_x_prior
+            )
+            <= distance_threshold
+            and abs(
+                keypoints_a[m.queryIdx].pt[1]
+                - keypoints_b[m.trainIdx].pt[1]
+                - delta_y_prior
+            )
+            <= distance_threshold
         ]
         if len(filtered_matches) < 4:
             empty["distortion_method"] = f"N/A(先验过滤不足:{len(filtered_matches)})"
             return empty
 
         # 4. RANSAC 算法估算仿射变换矩阵
-        source_points = np.float32([keypoints_a[m.queryIdx].pt for m in filtered_matches]).reshape(-1, 1, 2)
-        destination_points = np.float32([keypoints_b[m.trainIdx].pt for m in filtered_matches]).reshape(-1, 1, 2)
-        homography_matrix, mask = cv2.estimateAffine2D(source_points, destination_points, method=cv2.RANSAC, ransacReprojThreshold=3.0)
+        source_points = np.array(
+            [keypoints_a[m.queryIdx].pt for m in filtered_matches], dtype=np.float32
+        ).reshape(-1, 1, 2)
+        destination_points = np.array(
+            [keypoints_b[m.trainIdx].pt for m in filtered_matches], dtype=np.float32
+        ).reshape(-1, 1, 2)
+        homography_matrix, mask = cv2.estimateAffine2D(
+            source_points,
+            destination_points,
+            method=cv2.RANSAC,
+            ransacReprojThreshold=3.0,
+        )
         if homography_matrix is None:
             empty["distortion_method"] = "N/A(RANSAC失败)"
             return empty
@@ -627,23 +762,25 @@ class ImageQualityCalculator:
             R = U @ Vt
         S = R.T @ A
         rotation_degree = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
-        shear        = float(S[0, 1])
-        scale_x      = float(S[0, 0])
-        scale_y      = float(S[1, 1])
+        shear = float(S[0, 1])
+        scale_x = float(S[0, 0])
+        scale_y = float(S[1, 1])
 
         # 畸变评分交由评分引擎
-        distortion_score, score_rotation, score_shear = ImageQualityScorer.calculate_distortion_pair_score(rotation_degree, shear)
+        distortion_score, score_rotation, score_shear = (
+            ImageQualityScorer.calculate_distortion_pair_score(rotation_degree, shear)
+        )
 
         return {
-            "distortion_rotation_degree":   rotation_degree,
-            "distortion_shear":          shear,
-            "distortion_scale_x":        scale_x,
-            "distortion_scale_y":        scale_y,
-            "distortion_inliers":        inliers,
-            "distortion_method":         f"SIFT+RANSAC({inliers})",
-            "distortion_score":          distortion_score,
+            "distortion_rotation_degree": rotation_degree,
+            "distortion_shear": shear,
+            "distortion_scale_x": scale_x,
+            "distortion_scale_y": scale_y,
+            "distortion_inliers": inliers,
+            "distortion_method": f"SIFT+RANSAC({inliers})",
+            "distortion_score": distortion_score,
             "distortion_score_rotation": round(score_rotation, 2),
-            "distortion_score_shear":    round(score_shear, 2),
+            "distortion_score_shear": round(score_shear, 2),
         }
 
     def get_distortion_metrics(self, df: pd.DataFrame) -> dict[str, Any]:
@@ -656,17 +793,24 @@ class ImageQualityCalculator:
             dict[str, Any]: 总体形变指标字典。
         """
         valid = df.dropna(subset=["distortion_score"])
-        total_count = int(len(df.dropna(subset=["shift_delta_x"])))   # 参与双图计算的对数
+        total_count = int(
+            len(df.dropna(subset=["shift_delta_x"]))
+        )  # 参与双图计算的对数
         failed_count = total_count - int(len(valid))
         if valid.empty:
             return {"total_pairs": total_count, "failed_count": failed_count}
         return {
-            "total_pairs":           total_count,
-            "failed_count":          failed_count,
+            "total_pairs": total_count,
+            "failed_count": failed_count,
             "distortion_score_mean": float(valid["distortion_score"].mean()),
-            "distortion_rotation_mean": float(valid["distortion_rotation_degree"].mean()),
+            "distortion_rotation_mean": float(
+                valid["distortion_rotation_degree"].mean()
+            ),
             "distortion_shear_mean": float(valid["distortion_shear"].mean()),
-            "distortion_score_std":  ImageQualityDataUtils.safe_std(valid["distortion_score"]),
-            "distortion_failed_ratio": failed_count / total_count * 100 if total_count > 0 else 0.0,
+            "distortion_score_std": ImageQualityDataUtils.safe_std(
+                valid["distortion_score"]
+            ),
+            "distortion_failed_ratio": (
+                failed_count / total_count * 100 if total_count > 0 else 0.0
+            ),
         }
-

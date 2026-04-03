@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +45,16 @@ class ImageQualityDataUtils:
         try:
             with open(yaml_path, "r", encoding="utf-8") as f:
                 meta = yaml.safe_load(f)
-            hex_to_double = lambda h: struct.unpack(">d", bytes.fromhex(h))[0]
-            px_size = hex_to_double(meta["image_meta"]["pixel_equivalents"].split(",")[0])
-            overlap_px = max(1, int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)))
+            def hex_to_double(h: str) -> float:
+                return struct.unpack(">d", bytes.fromhex(h))[0]
+
+            px_size = hex_to_double(
+                meta["image_meta"]["pixel_equivalents"].split(",")[0]
+            )
+            overlap_px = max(
+                1,
+                int(round(hex_to_double(meta["view_meta"]["overlap_width"]) / px_size)),
+            )
             data_dir = yaml_path.parent
             views: dict[tuple[int, int], Path] = {
                 tuple(int(i) for i in v["index"].split(",")): data_dir / v["filename"]  # type: ignore[misc]
@@ -85,8 +92,10 @@ class ImageQualityDataUtils:
 
     @staticmethod
     def build_coord_index(
-        df: pd.DataFrame
-    ) -> tuple[list[Any], list[Any], dict[Any, int], dict[Any, int], set[tuple[Any, Any]]]:
+        df: pd.DataFrame,
+    ) -> tuple[
+        list[Any], list[Any], dict[Any, int], dict[Any, int], set[tuple[Any, Any]]
+    ]:
         """提取 DataFrame 中所有的去重坐标，并构建位置索引与集合。
 
         用来加速后续对相邻坐标(边缘位置)存在与否的查找判定。
@@ -144,14 +153,22 @@ class ImageQualityDataUtils:
         current_index_y = index_y[y]
 
         x_previous = x_coords[current_index_x - 1] if current_index_x > 0 else None
-        x_next = x_coords[current_index_x + 1] if current_index_x < len(x_coords) - 1 else None
+        x_next = (
+            x_coords[current_index_x + 1]
+            if current_index_x < len(x_coords) - 1
+            else None
+        )
         y_previous = y_coords[current_index_y - 1] if current_index_y > 0 else None
-        y_next = y_coords[current_index_y + 1] if current_index_y < len(y_coords) - 1 else None
+        y_next = (
+            y_coords[current_index_y + 1]
+            if current_index_y < len(y_coords) - 1
+            else None
+        )
 
-        missing_left  = x_previous is None or (x_previous, y) not in coord_set
+        missing_left = x_previous is None or (x_previous, y) not in coord_set
         missing_right = x_next is None or (x_next, y) not in coord_set
-        missing_up    = y_previous is None or (x, y_previous) not in coord_set
-        missing_down  = y_next is None or (x, y_next) not in coord_set
+        missing_up = y_previous is None or (x, y_previous) not in coord_set
+        missing_down = y_next is None or (x, y_next) not in coord_set
         return missing_left or missing_right or missing_up or missing_down
 
     # ==================================================================
@@ -159,9 +176,7 @@ class ImageQualityDataUtils:
     # ==================================================================
 
     @staticmethod
-    def build_grid(
-        df: pd.DataFrame, metric_names: list[str]
-    ) -> dict[str, Any]:
+    def build_grid(df: pd.DataFrame, metric_names: list[str]) -> dict[str, Any]:
         """将 DataFrame 映射到二维网格，供热图绘制使用。
 
         Args:
@@ -182,14 +197,18 @@ class ImageQualityDataUtils:
 
         number_of_x = len(x_labels)
         number_of_y = len(y_labels)
-        grids = {name: np.full((number_of_y, number_of_x), np.nan) for name in metric_names}
+        grids = {
+            name: np.full((number_of_y, number_of_x), np.nan) for name in metric_names
+        }
 
         for row in df.itertuples():
             column_index = x_to_col[row.x]
             row_index = y_to_row[row.y]
             for name in metric_names:
                 value = getattr(row, name, None)
-                if value is not None and not (isinstance(value, float) and np.isnan(value)):
+                if value is not None and not (
+                    isinstance(value, float) and np.isnan(value)
+                ):
                     grids[name][row_index, column_index] = value
 
         return {
@@ -212,14 +231,20 @@ class ImageQualityDataUtils:
             return result
 
         # 根据有效图像的均值和标准差计算动态阈值
-        valid_df = result[result["is_valid"] == True]
+        valid_df = result[result["is_valid"]]
         mean_value = float(valid_df["valid_mean"].mean()) if len(valid_df) > 0 else 0.0
-        standard_deviation_value  = ImageQualityDataUtils.safe_std(valid_df["valid_mean"]) if len(valid_df) > 0 else 0.0
-        dark_threshold      = mean_value - standard_deviation_value
+        standard_deviation_value = (
+            ImageQualityDataUtils.safe_std(valid_df["valid_mean"])
+            if len(valid_df) > 0
+            else 0.0
+        )
+        dark_threshold = mean_value - standard_deviation_value
         very_dark_threshold = mean_value - 3 * standard_deviation_value
 
         # 构建坐标索引以便判断是否是边缘位置
-        x_coords, y_coords, index_x, index_y, coord_set = ImageQualityDataUtils.build_coord_index(result)
+        x_coords, y_coords, index_x, index_y, coord_set = (
+            ImageQualityDataUtils.build_coord_index(result)
+        )
 
         def classify(row: pd.Series) -> str:
             # 只有在边缘的图像才可能是背景过渡区

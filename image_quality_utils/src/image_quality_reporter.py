@@ -11,15 +11,15 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 
 # 清晰度指标的中文显示名称
 SHARPNESS_METRIC_CN = {
     "laplacian": "Laplacian 方差",
     "tenengrad": "Tenengrad 梯度能量",
-    "fft":       "FFT 高频能量比",
-    "brenner":   "Brenner 梯度",
+    "fft": "FFT 高频能量比",
+    "brenner": "Brenner 梯度",
 }
+
 
 class _ReportBuilder:
     WIDTH = 60
@@ -49,27 +49,28 @@ class _ReportBuilder:
     def build(self) -> str:
         return "\n".join(self._lines) + "\n"
 
+
 class ImageQualityReporter:
     def __init__(self, output_dir: str | Path) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # 各检测类型的输出子目录
-        self.brightness_dir  = self.output_dir / "亮度检测"
-        self.sharpness_dir   = self.output_dir / "清晰度检测"
-        self.shift_dir        = self.output_dir / "位置偏移检测"
-        self.distortion_dir   = self.output_dir / "畸变检测"
+        self.brightness_dir = self.output_dir / "亮度检测"
+        self.sharpness_dir = self.output_dir / "清晰度检测"
+        self.shift_dir = self.output_dir / "位置偏移检测"
+        self.distortion_dir = self.output_dir / "畸变检测"
 
         # 文件名常量（各子目录下统一命名）
-        self.csv_name        = "明细数据.csv"
+        self.csv_name = "明细数据.csv"
         self.metrics_json_name = "评分指标.json"
-        self.report_name     = "评分报告.txt"
-        self.heatmap_name    = "热力图.png"
-        self.histogram_name  = "随机抽样对比示例.png"
+        self.report_name = "评分报告.txt"
+        self.heatmap_name = "热力图.png"
+        self.histogram_name = "随机抽样对比示例.png"
 
         # 暗色主题配色常量（与 wafer_shiftCheck 保持一致）
-        self._BG    = "#1a1a2e"   # 图表外背景
-        self._PANEL = "#16213e"   # 子图面板背景
+        self._BG = "#1a1a2e"  # 图表外背景
+        self._PANEL = "#16213e"  # 子图面板背景
 
         plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
         plt.rcParams["axes.unicode_minus"] = False
@@ -120,8 +121,13 @@ class ImageQualityReporter:
             vmin = -vmax if cmap in ("RdBu_r", "RdBu") else 0.0
 
         im = ax.imshow(
-            grid, cmap=cmap, vmin=vmin, vmax=vmax,
-            aspect="auto", interpolation="nearest", origin=origin,
+            grid,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            aspect="auto",
+            interpolation="nearest",
+            origin=origin,
         )
         cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
         cbar.set_label(cbar_label, color="white", fontsize=9)
@@ -134,16 +140,27 @@ class ImageQualityReporter:
                     val = grid[ri, ci]
                     if not np.isnan(val):
                         ax.text(
-                            ci, ri, format(val, fmt),
-                            ha="center", va="center",
-                            fontsize=6, color="black", fontweight="bold",
+                            ci,
+                            ri,
+                            format(val, fmt),
+                            ha="center",
+                            va="center",
+                            fontsize=6,
+                            color="black",
+                            fontweight="bold",
                         )
                     # 可疑格子紫色框
                     if suspicious_grid is not None and suspicious_grid[ri, ci]:
-                        ax.add_patch(plt.Rectangle(
-                            (ci - 0.5, ri - 0.5), 1, 1,
-                            linewidth=2, edgecolor="#9b59b6", facecolor="none",
-                        ))
+                        ax.add_patch(
+                            plt.Rectangle(
+                                (ci - 0.5, ri - 0.5),
+                                1,
+                                1,
+                                linewidth=2,
+                                edgecolor="#9b59b6",
+                                facecolor="none",
+                            )
+                        )
 
         # 坐标轴刻度（自适应步长）
         step_c = max(1, grid_cols // 20)
@@ -151,12 +168,16 @@ class ImageQualityReporter:
         ax.set_xticks(range(0, grid_cols, step_c))
         ax.set_xticklabels(
             [str(x_labels[i]) for i in range(0, grid_cols, step_c)],
-            color="white", fontsize=7, rotation=45, ha="right",
+            color="white",
+            fontsize=7,
+            rotation=45,
+            ha="right",
         )
         ax.set_yticks(range(0, grid_rows, step_r))
         ax.set_yticklabels(
             [str(y_labels[i]) for i in range(0, grid_rows, step_r)],
-            color="white", fontsize=7,
+            color="white",
+            fontsize=7,
         )
         ax.set_xlabel("X 坐标", color="white", fontsize=9)
         ax.set_ylabel("Y 坐标", color="white", fontsize=9)
@@ -181,11 +202,13 @@ class ImageQualityReporter:
         stats_df.to_csv(path, index=False, encoding="utf-8-sig")
         return path
 
-    def save_brightness_visualization(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
+    def save_brightness_visualization(
+        self, stats_df: pd.DataFrame, show: bool = False
+    ) -> Path:
         focus_df = (
             stats_df[stats_df["region_type"] == "normal"]
             if "region_type" in stats_df.columns
-            else stats_df[stats_df["is_valid"] == True]
+            else stats_df[stats_df["is_valid"]]
         )
 
         figure = plt.figure(figsize=(20, 12))
@@ -233,7 +256,9 @@ class ImageQualityReporter:
         # 亮度汇总（非纯背景）
         builder.section("亮度汇总 (非纯背景)")
         builder.field("平均亮度", f"{metrics['average_brightness_all']:.2f}")
-        builder.field("亮度标准差", f"{metrics['standard_deviation_brightness_all']:.2f}")
+        builder.field(
+            "亮度标准差", f"{metrics['standard_deviation_brightness_all']:.2f}"
+        )
         builder.field("变异系数(CV)", f"{metrics['coefficient_of_variation_all']:.2f}%")
         builder.field(
             f"高亮图片数 (>={metrics['high_brightness_threshold']})",
@@ -251,7 +276,9 @@ class ImageQualityReporter:
             "亮度范围",
             f"[{metrics['min_brightness']:.2f}, {metrics['max_brightness']:.2f}]",
         )
-        builder.field("变异系数(CV)", f"{metrics['coefficient_of_variation_percent']:.2f}%")
+        builder.field(
+            "变异系数(CV)", f"{metrics['coefficient_of_variation_percent']:.2f}%"
+        )
         builder.blank()
 
         # 异常值统计
@@ -274,9 +301,11 @@ class ImageQualityReporter:
         stats_df.to_csv(path, index=False, encoding="utf-8-sig")
         return path
 
-    def save_sharpness_heatmaps(self, grid_data: dict[str, Any], show: bool = False) -> list[Path]:
+    def save_sharpness_heatmaps(
+        self, grid_data: dict[str, Any], show: bool = False
+    ) -> list[Path]:
         """为每个清晰度指标各生成一张空间热图（暗色主题，含数值标注）。"""
-        out_dir  = self._ensure_dir(self.sharpness_dir)
+        out_dir = self._ensure_dir(self.sharpness_dir)
         paths: list[Path] = []
         x_labels = grid_data["x_labels"]
         y_labels = grid_data["y_labels"]
@@ -287,7 +316,7 @@ class ImageQualityReporter:
             cn_name = SHARPNESS_METRIC_CN.get(metric_name, metric_name)
             valid = grid[~np.isnan(grid)]
             mean_val = float(np.mean(valid)) if len(valid) else 0.0
-            n_total  = int(np.sum(~np.isnan(grid)))
+            n_total = int(np.sum(~np.isnan(grid)))
 
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
             fig.patch.set_facecolor(self._BG)
@@ -297,12 +326,17 @@ class ImageQualityReporter:
                 f"清晰度热图 — {cn_name}  |  共 {n_total} 块  |  均值 {mean_val:.4f}"
             )
             self._draw_dark_heatmap(
-                ax=ax, fig=fig, grid=grid,
-                x_labels=x_labels, y_labels=y_labels,
-                title=title, cmap="viridis",
+                ax=ax,
+                fig=fig,
+                grid=grid,
+                x_labels=x_labels,
+                y_labels=y_labels,
+                title=title,
+                cmap="viridis",
                 vmin=float(valid.min()) if len(valid) else 0.0,
                 vmax=float(valid.max()) if len(valid) else 1.0,
-                cbar_label=cn_name, fmt=".2f",
+                cbar_label=cn_name,
+                fmt=".2f",
             )
             fig.tight_layout()
 
@@ -316,7 +350,9 @@ class ImageQualityReporter:
 
         return paths
 
-    def save_sharpness_histograms(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
+    def save_sharpness_histograms(
+        self, stats_df: pd.DataFrame, show: bool = False
+    ) -> Path:
         """将四种清晰度指标的分布直方图绘制为 2×2 布局并保存。"""
         metric_names = list(SHARPNESS_METRIC_CN.keys())
         fig, axes = plt.subplots(2, 2, figsize=(14, 9))
@@ -326,11 +362,17 @@ class ImageQualityReporter:
             if name not in stats_df.columns:
                 ax.set_visible(False)
                 continue
-            values = stats_df[name].dropna().values
+            values = stats_df[name].dropna().to_numpy()
             cn_name = SHARPNESS_METRIC_CN[name]
             ax.hist(values, bins=50, color="#4C9BE8", edgecolor="white", linewidth=0.5)
             mean_val = values.mean()
-            ax.axvline(mean_val, color="#E85C4C", linewidth=1.5, linestyle="--", label=f"均值 = {mean_val:.4f}")
+            ax.axvline(
+                mean_val,
+                color="#E85C4C",
+                linewidth=1.5,
+                linestyle="--",
+                label=f"均值 = {mean_val:.4f}",
+            )
             ax.set_title(cn_name, fontsize=12)
             ax.set_xlabel("分数", fontsize=10)
             ax.set_ylabel("图块数量", fontsize=10)
@@ -391,23 +433,29 @@ class ImageQualityReporter:
 
         return builder.build()
 
-
     # ==================================================================
     # 位移偏移报告
     # ==================================================================
 
     def save_shift_csv(self, stats_df: pd.DataFrame) -> Path:
-        cols = ["filename", "x", "y"] + [c for c in stats_df.columns if c.startswith("shift_")]
+        cols = ["filename", "x", "y"] + [
+            c for c in stats_df.columns if c.startswith("shift_")
+        ]
         path = self._ensure_dir(self.shift_dir) / self.csv_name
         stats_df[cols].to_csv(path, index=False, encoding="utf-8-sig")
         return path
 
-    def save_shift_heatmaps(self, stats_df: pd.DataFrame, show: bool = False) -> list[Path]:
+    def save_shift_heatmaps(
+        self, stats_df: pd.DataFrame, show: bool = False
+    ) -> list[Path]:
         """生成 Δx、Δy 两张空间热图（暗色主题，含数值标注与 SSIM 异常格高亮）。"""
         paths: list[Path] = []
         out_dir = self._ensure_dir(self.shift_dir)
 
-        for col, label in [("shift_dx", "X方向偏移量(Δx)"), ("shift_dy", "Y方向偏移量(Δy)")]:
+        for col, label in [
+            ("shift_dx", "X方向偏移量(Δx)"),
+            ("shift_dy", "Y方向偏移量(Δy)"),
+        ]:
             if col not in stats_df.columns:
                 continue
             valid = stats_df.dropna(subset=[col, "x", "y"])
@@ -420,20 +468,21 @@ class ImageQualityReporter:
             y_to_row = {y: i for i, y in enumerate(y_labels)}
             grid_rows, grid_cols = len(y_labels), len(x_labels)
 
-            grid     = np.full((grid_rows, grid_cols), np.nan)
+            grid = np.full((grid_rows, grid_cols), np.nan)
             suspicious_grid = np.zeros((grid_rows, grid_cols), dtype=bool)
 
             for _, row in valid.iterrows():
                 row_index, column_index = y_to_row[row["y"]], x_to_col[row["x"]]
                 grid[row_index, column_index] = row[col]
-                if "shift_suspicious" in valid.columns and row.get("shift_suspicious", False):
+                if "shift_suspicious" in valid.columns and row.get(
+                    "shift_suspicious", False
+                ):
                     suspicious_grid[row_index, column_index] = True
 
             mean_val = float(np.nanmean(grid))
-            suspicious_count   = int(suspicious_grid.sum())
-            title = (
-                f"{label}  |  共 {len(valid)} 对  |  均值 {mean_val:+.3f} px"
-                + (f"  |  ⚠ SSIM异常 {suspicious_count} 对" if suspicious_count > 0 else "")
+            suspicious_count = int(suspicious_grid.sum())
+            title = f"{label}  |  共 {len(valid)} 对  |  均值 {mean_val:+.3f} px" + (
+                f"  |  ⚠ SSIM异常 {suspicious_count} 对" if suspicious_count > 0 else ""
             )
 
             fig_w, fig_h = self._calc_figsize(grid_rows, grid_cols)
@@ -442,10 +491,15 @@ class ImageQualityReporter:
             ax.set_facecolor(self._PANEL)
 
             self._draw_dark_heatmap(
-                ax=ax, fig=fig, grid=grid,
-                x_labels=x_labels, y_labels=y_labels,
-                title=title, cmap="RdBu_r",
-                cbar_label="px", fmt="+.2f",
+                ax=ax,
+                fig=fig,
+                grid=grid,
+                x_labels=x_labels,
+                y_labels=y_labels,
+                title=title,
+                cmap="RdBu_r",
+                cbar_label="px",
+                fmt="+.2f",
                 suspicious_grid=suspicious_grid,
             )
             fig.tight_layout()
@@ -464,10 +518,18 @@ class ImageQualityReporter:
         valid = stats_df.dropna(subset=["shift_dx", "shift_dy"])
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle("晶圆位移偏移 — Δx / Δy 分布", fontsize=14)
-        for ax, col, label in zip(axes, ["shift_dx", "shift_dy"], ["Δx (px)", "Δy (px)"]):
-            vals = valid[col].values
+        for ax, col, label in zip(
+            axes, ["shift_dx", "shift_dy"], ["Δx (px)", "Δy (px)"]
+        ):
+            vals = valid[col].to_numpy()
             ax.hist(vals, bins=50, color="#4C9BE8", edgecolor="white", linewidth=0.5)
-            ax.axvline(vals.mean(), color="#E85C4C", linewidth=1.5, linestyle="--", label=f"均值 = {vals.mean():.3f}")
+            ax.axvline(
+                vals.mean(),
+                color="#E85C4C",
+                linewidth=1.5,
+                linestyle="--",
+                label=f"均值 = {vals.mean():.3f}",
+            )
             ax.set_title(label, fontsize=12)
             ax.set_xlabel("偏移量 (px)", fontsize=10)
             ax.set_ylabel("图块对数量", fontsize=10)
@@ -510,16 +572,17 @@ class ImageQualityReporter:
 
         return builder.build()
 
-
     def generate_shift_all(
         self, stats_df: pd.DataFrame, metrics: dict, show: bool = False
     ) -> dict[str, Any]:
         return {
-            "csv":       self.save_shift_csv(stats_df),
-            "json":      self.save_metrics_json(metrics, self.shift_dir, filename="位移评分指标.json"),
-            "txt":       self.save_shift_report(metrics),
+            "csv": self.save_shift_csv(stats_df),
+            "json": self.save_metrics_json(
+                metrics, self.shift_dir, filename="位移评分指标.json"
+            ),
+            "txt": self.save_shift_report(metrics),
             "histogram": self.save_shift_histograms(stats_df, show=show),
-            "heatmaps":  self.save_shift_heatmaps(stats_df, show=show),
+            "heatmaps": self.save_shift_heatmaps(stats_df, show=show),
         }
 
     # ==================================================================
@@ -527,22 +590,33 @@ class ImageQualityReporter:
     # ==================================================================
 
     def save_distortion_csv(self, stats_df: pd.DataFrame) -> Path:
-        cols = ["filename", "x", "y"] + [c for c in stats_df.columns if c.startswith("dist_")]
+        cols = ["filename", "x", "y"] + [
+            c for c in stats_df.columns if c.startswith("dist_")
+        ]
         path = self._ensure_dir(self.distortion_dir) / self.csv_name
         stats_df[cols].to_csv(path, index=False, encoding="utf-8-sig")
         return path
 
-    def save_distortion_heatmap(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
+    def save_distortion_heatmap(
+        self, stats_df: pd.DataFrame, show: bool = False
+    ) -> Path:
         """畸变评分空间热图（暗色主题，含数值标注）。"""
         out_dir = self._ensure_dir(self.distortion_dir)
-        valid   = stats_df.dropna(subset=["distortion_score", "x", "y"])
+        valid = stats_df.dropna(subset=["distortion_score", "x", "y"])
 
         if valid.empty:
             fig, ax = plt.subplots(figsize=(10, 8))
             fig.patch.set_facecolor(self._BG)
             ax.set_facecolor(self._PANEL)
-            ax.text(0.5, 0.5, "暂无数据", ha="center", va="center",
-                    color="white", fontsize=16)
+            ax.text(
+                0.5,
+                0.5,
+                "暂无数据",
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=16,
+            )
             ax.set_axis_off()
         else:
             x_labels = sorted(valid["x"].unique().tolist())
@@ -555,7 +629,7 @@ class ImageQualityReporter:
                 grid[y_to_row[row["y"]], x_to_col[row["x"]]] = row["distortion_score"]
 
             mean_val = float(np.nanmean(grid))
-            total_count  = int(np.sum(~np.isnan(grid)))
+            total_count = int(np.sum(~np.isnan(grid)))
             title = f"畸变评分热图  |  共 {total_count} 对  |  均值 {mean_val:.2f} 分"
 
             fig_w, fig_h = self._calc_figsize(grid_rows, grid_cols)
@@ -564,11 +638,17 @@ class ImageQualityReporter:
             ax.set_facecolor(self._PANEL)
 
             self._draw_dark_heatmap(
-                ax=ax, fig=fig, grid=grid,
-                x_labels=x_labels, y_labels=y_labels,
-                title=title, cmap="RdYlGn",
-                vmin=0.0, vmax=100.0,
-                cbar_label="畸变评分", fmt=".2f",
+                ax=ax,
+                fig=fig,
+                grid=grid,
+                x_labels=x_labels,
+                y_labels=y_labels,
+                title=title,
+                cmap="RdYlGn",
+                vmin=0.0,
+                vmax=100.0,
+                cbar_label="畸变评分",
+                fmt=".2f",
             )
 
         fig.tight_layout()
@@ -580,18 +660,32 @@ class ImageQualityReporter:
             plt.close(fig)
         return path
 
-    def save_distortion_histograms(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
+    def save_distortion_histograms(
+        self, stats_df: pd.DataFrame, show: bool = False
+    ) -> Path:
         """旋转角 / 切变量分布直方图（2×1 布局）。"""
-        valid = stats_df.dropna(subset=["distortion_rotation_degree", "distortion_shear"])
+        valid = stats_df.dropna(
+            subset=["distortion_rotation_degree", "distortion_shear"]
+        )
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle("晶圆畸变 — 旋转角 / 切变分布", fontsize=14)
-        for ax, col, label in zip(axes, ["distortion_rotation_degree", "distortion_shear"], ["旋转角 (°)", "切变量"]):
+        for ax, col, label in zip(
+            axes,
+            ["distortion_rotation_degree", "distortion_shear"],
+            ["旋转角 (°)", "切变量"],
+        ):
             if valid.empty:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center")
                 continue
-            vals = valid[col].values
+            vals = valid[col].to_numpy()
             ax.hist(vals, bins=50, color="#4C9BE8", edgecolor="white", linewidth=0.5)
-            ax.axvline(vals.mean(), color="#E85C4C", linewidth=1.5, linestyle="--", label=f"均值 = {vals.mean():.4f}")
+            ax.axvline(
+                vals.mean(),
+                color="#E85C4C",
+                linewidth=1.5,
+                linestyle="--",
+                label=f"均值 = {vals.mean():.4f}",
+            )
             ax.set_title(label, fontsize=12)
             ax.set_xlabel(label, fontsize=10)
             ax.set_ylabel("图块对数量", fontsize=10)
@@ -625,53 +719,66 @@ class ImageQualityReporter:
 
         # 畸变统计
         builder.section("畸变统计")
-        builder.field("平均畸变评分", f"{metrics.get('distortion_score_mean', 0):.2f} 分")
-        builder.field("旋转角均值", f"{metrics.get('distortion_rotation_mean', 0):+.4f} °")
+        builder.field(
+            "平均畸变评分", f"{metrics.get('distortion_score_mean', 0):.2f} 分"
+        )
+        builder.field(
+            "旋转角均值", f"{metrics.get('distortion_rotation_mean', 0):+.4f} °"
+        )
         builder.field("切变量均值", f"{metrics.get('distortion_shear_mean', 0):+.4f}")
         builder.field("评分标准差", f"{metrics.get('distortion_score_std', 0):.2f}")
         builder.blank()
 
         return builder.build()
 
-
     def generate_distortion_all(
         self, stats_df: pd.DataFrame, metrics: dict, show: bool = False
     ) -> dict[str, Any]:
         return {
-            "csv":       self.save_distortion_csv(stats_df),
-            "json":      self.save_metrics_json(metrics, self.distortion_dir, filename="畸变评分指标.json"),
-            "txt":       self.save_distortion_report(metrics),
+            "csv": self.save_distortion_csv(stats_df),
+            "json": self.save_metrics_json(
+                metrics, self.distortion_dir, filename="畸变评分指标.json"
+            ),
+            "txt": self.save_distortion_report(metrics),
             "histogram": self.save_distortion_histograms(stats_df, show=show),
-            "heatmap":   self.save_distortion_heatmap(stats_df, show=show),
+            "heatmap": self.save_distortion_heatmap(stats_df, show=show),
         }
 
     # ==================================================================
     # 统一入口
     # ==================================================================
 
-    def save_metrics_json(self, metrics: dict, subdir: Path, filename: str | None = None) -> Path:
+    def save_metrics_json(
+        self, metrics: dict, subdir: Path, filename: str | None = None
+    ) -> Path:
         path = self._ensure_dir(subdir) / (filename or self.metrics_json_name)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(metrics, f, indent=2, ensure_ascii=False)
         return path
 
-    def generate_brightness_all(self, stats_df: pd.DataFrame, metrics: dict, show: bool = False) -> dict[str, Path]:
+    def generate_brightness_all(
+        self, stats_df: pd.DataFrame, metrics: dict, show: bool = False
+    ) -> dict[str, Path]:
         return {
-            "csv":  self.save_brightness_csv(stats_df),
+            "csv": self.save_brightness_csv(stats_df),
             "json": self.save_metrics_json(metrics, self.brightness_dir),
-            "txt":  self.save_brightness_report(metrics),
-            "png":  self.save_brightness_visualization(stats_df, show=show),
+            "txt": self.save_brightness_report(metrics),
+            "png": self.save_brightness_visualization(stats_df, show=show),
         }
 
     def generate_sharpness_all(
-        self, stats_df: pd.DataFrame, metrics: dict, grid_data: dict[str, Any], show: bool = False
+        self,
+        stats_df: pd.DataFrame,
+        metrics: dict,
+        grid_data: dict[str, Any],
+        show: bool = False,
     ) -> dict[str, Any]:
         return {
-            "csv":       self.save_sharpness_csv(stats_df),
-            "json":      self.save_metrics_json(metrics, self.sharpness_dir),
-            "txt":       self.save_sharpness_report(metrics),
+            "csv": self.save_sharpness_csv(stats_df),
+            "json": self.save_metrics_json(metrics, self.sharpness_dir),
+            "txt": self.save_sharpness_report(metrics),
             "histogram": self.save_sharpness_histograms(stats_df, show=show),
-            "heatmaps":  self.save_sharpness_heatmaps(grid_data, show=show),
+            "heatmaps": self.save_sharpness_heatmaps(grid_data, show=show),
         }
 
     # ==================================================================
@@ -696,25 +803,30 @@ class ImageQualityReporter:
         x_coords = sorted(df["x"].dropna().unique().tolist())
         y_coords = sorted(df["y"].dropna().unique().tolist())
         grid_rows, grid_cols = len(y_coords), len(x_coords)
-        grid   = np.full((grid_rows, grid_cols), np.nan)
+        grid = np.full((grid_rows, grid_cols), np.nan)
         x_index = {v: i for i, v in enumerate(x_coords)}
         y_index = {v: i for i, v in enumerate(y_coords)}
         for _, row in df.dropna(subset=["x", "y"]).iterrows():
             grid[y_index[row["y"]], x_index[row["x"]]] = row["valid_mean"]
 
-        valid    = grid[~np.isnan(grid)]
+        valid = grid[~np.isnan(grid)]
         mean_val = float(np.mean(valid)) if len(valid) else 0.0
-        title    = f"亮度热力图  |  均值 {mean_val:.2f}"
+        title = f"亮度热力图  |  均值 {mean_val:.2f}"
 
         # 在综合面板图内复用暗色热力图方法
         fig = ax.get_figure()
         self._draw_dark_heatmap(
-            ax=ax, fig=fig, grid=grid,
-            x_labels=x_coords, y_labels=y_coords,
-            title=title, cmap="viridis",
+            ax=ax,
+            fig=fig,
+            grid=grid,
+            x_labels=x_coords,
+            y_labels=y_coords,
+            title=title,
+            cmap="viridis",
             vmin=float(valid.min()) if len(valid) else 0.0,
             vmax=float(valid.max()) if len(valid) else 255.0,
-            cbar_label="有效均值", fmt=".2f",
+            cbar_label="有效均值",
+            fmt=".2f",
         )
 
     def _plot_histogram(self, ax, df: pd.DataFrame) -> None:
@@ -722,9 +834,23 @@ class ImageQualityReporter:
             self._plot_empty(ax, "亮度直方图")
             return
         brightness_values = df["valid_mean"]
-        ax.hist(brightness_values, bins=50, color="skyblue", edgecolor="black", alpha=0.7)
-        ax.axvline(brightness_values.mean(),   color="red",   linestyle="--", linewidth=2, label="均值")
-        ax.axvline(brightness_values.median(), color="green", linestyle="--", linewidth=2, label="中位数")
+        ax.hist(
+            brightness_values, bins=50, color="skyblue", edgecolor="black", alpha=0.7
+        )
+        ax.axvline(
+            brightness_values.mean(),
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label="均值",
+        )
+        ax.axvline(
+            brightness_values.median(),
+            color="green",
+            linestyle="--",
+            linewidth=2,
+            label="中位数",
+        )
         ax.set_title("亮度直方图")
         ax.set_xlabel("亮度")
         ax.set_ylabel("数量")
@@ -736,7 +862,12 @@ class ImageQualityReporter:
             return
         trend = df.groupby("x")["valid_mean"].agg(["mean", "std"]).fillna(0.0)
         ax.plot(trend.index, trend["mean"], marker="o", linewidth=2, markersize=4)
-        ax.fill_between(trend.index, trend["mean"] - trend["std"], trend["mean"] + trend["std"], alpha=0.3)
+        ax.fill_between(
+            trend.index,
+            trend["mean"] - trend["std"],
+            trend["mean"] + trend["std"],
+            alpha=0.3,
+        )
         ax.set_title("X方向亮度趋势")
         ax.set_xlabel("X")
         ax.set_ylabel("亮度")
@@ -746,8 +877,21 @@ class ImageQualityReporter:
             self._plot_empty(ax, "Y方向亮度趋势")
             return
         trend = df.groupby("y")["valid_mean"].agg(["mean", "std"]).fillna(0.0)
-        ax.plot(trend.index, trend["mean"], marker="o", linewidth=2, markersize=4, color="orange")
-        ax.fill_between(trend.index, trend["mean"] - trend["std"], trend["mean"] + trend["std"], alpha=0.3, color="orange")
+        ax.plot(
+            trend.index,
+            trend["mean"],
+            marker="o",
+            linewidth=2,
+            markersize=4,
+            color="orange",
+        )
+        ax.fill_between(
+            trend.index,
+            trend["mean"] - trend["std"],
+            trend["mean"] + trend["std"],
+            alpha=0.3,
+            color="orange",
+        )
         ax.set_title("Y方向亮度趋势")
         ax.set_xlabel("Y")
         ax.set_ylabel("亮度")
@@ -757,15 +901,23 @@ class ImageQualityReporter:
             self._plot_empty(ax, "离群点分布图")
             return
         mean_val = float(df["valid_mean"].mean())
-        standard_deviation_value  = self._safe_std_local(df["valid_mean"])
-        normal    = df[(df["valid_mean"] >= mean_val - standard_deviation_value)   & (df["valid_mean"] <= mean_val + 2 * standard_deviation_value)]
-        dark      = df[(df["valid_mean"] <  mean_val - standard_deviation_value)   & (df["valid_mean"] >= mean_val - 3 * standard_deviation_value)]
-        very_dark = df[ df["valid_mean"] <  mean_val - 3 * standard_deviation_value]
-        bright    = df[ df["valid_mean"] >  mean_val + 2 * standard_deviation_value]
-        ax.scatter(normal["x"],    normal["y"],    c="green",  s=20, alpha=0.5, label="正常")
-        ax.scatter(dark["x"],      dark["y"],      c="orange", s=30, alpha=0.7, label="偏暗")
-        ax.scatter(very_dark["x"], very_dark["y"], c="red",    s=50, marker="X", label="极暗")
-        ax.scatter(bright["x"],    bright["y"],    c="blue",   s=50, marker="*", label="偏亮")
+        standard_deviation_value = self._safe_std_local(df["valid_mean"])
+        normal = df[
+            (df["valid_mean"] >= mean_val - standard_deviation_value)
+            & (df["valid_mean"] <= mean_val + 2 * standard_deviation_value)
+        ]
+        dark = df[
+            (df["valid_mean"] < mean_val - standard_deviation_value)
+            & (df["valid_mean"] >= mean_val - 3 * standard_deviation_value)
+        ]
+        very_dark = df[df["valid_mean"] < mean_val - 3 * standard_deviation_value]
+        bright = df[df["valid_mean"] > mean_val + 2 * standard_deviation_value]
+        ax.scatter(normal["x"], normal["y"], c="green", s=20, alpha=0.5, label="正常")
+        ax.scatter(dark["x"], dark["y"], c="orange", s=30, alpha=0.7, label="偏暗")
+        ax.scatter(
+            very_dark["x"], very_dark["y"], c="red", s=50, marker="X", label="极暗"
+        )
+        ax.scatter(bright["x"], bright["y"], c="blue", s=50, marker="*", label="偏亮")
         ax.set_title("离群点分布图")
         ax.set_xlabel("X")
         ax.set_ylabel("Y")

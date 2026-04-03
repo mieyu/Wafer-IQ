@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 from src.image_quality_calculate import ImageQualityCalculator
-from src.image_quality_reporter import ImageQualityReporter
 from src.image_quality_data_utils import ImageQualityDataUtils
+from src.image_quality_reporter import ImageQualityReporter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,14 +25,15 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 # 固定参数（一般无需改动）
 # ------------------------------------------------------------------
-YAML_FILENAME    = "placements-BF.yml"   # YAML 配置文件名（坐标与重叠区像素数均从此解析）
-STITCH_DIRECTION = "horizontal"          # 拼接方向，一般为 horizontal
-NUM_WORKERS      = 8                     # 多线程分析并发数
+YAML_FILENAME = "placements-BF.yml"  # YAML 配置文件名（坐标与重叠区像素数均从此解析）
+STITCH_DIRECTION = "horizontal"  # 拼接方向，一般为 horizontal
+NUM_WORKERS = 8  # 多线程分析并发数
 
 
 # ------------------------------------------------------------------
 # 单个子目录完整分析流程
 # ------------------------------------------------------------------
+
 
 def analyze_one(data_dir: Path, output_dir: Path) -> None:
     """对单个晶圆子目录执行完整的四项质量分析并输出报告。
@@ -41,12 +42,12 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
         data_dir (Path): 待分析的特定晶圆子目录路径。
         output_dir (Path): 对应此晶圆结果输出的目录路径。
     """
-    calculator       = ImageQualityCalculator()
-    reporter   = ImageQualityReporter(output_dir)
+    calculator = ImageQualityCalculator()
+    reporter = ImageQualityReporter(output_dir)
 
-    logger.info(f"══════════════════════════════════════════════")
+    logger.info("══════════════════════════════════════════════")
     logger.info(f"开始分析：{data_dir.name}  →  {output_dir}")
-    logger.info(f"══════════════════════════════════════════════")
+    logger.info("══════════════════════════════════════════════")
 
     # ── 读图一次，滑动窗口计算所有指标 ────────────────────────────────
     df = calculator.batch_calculate(
@@ -68,8 +69,12 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
 
     # ── 清晰度报告 ────────────────────────────────────────────────────
     sharpness_metrics = calculator.get_sharpness_metrics(df)
-    grid_data = ImageQualityDataUtils.build_grid(df, metric_names=["laplacian", "tenengrad", "fft", "brenner"])
-    sharpness_outputs = reporter.generate_sharpness_all(df, sharpness_metrics, grid_data)
+    grid_data = ImageQualityDataUtils.build_grid(
+        df, metric_names=["laplacian", "tenengrad", "fft", "brenner"]
+    )
+    sharpness_outputs = reporter.generate_sharpness_all(
+        df, sharpness_metrics, grid_data
+    )
     logger.info(f"[{data_dir.name}][清晰度] 报告已生成：")
     for key, val in sharpness_outputs.items():
         if isinstance(val, list):
@@ -107,6 +112,7 @@ def analyze_one(data_dir: Path, output_dir: Path) -> None:
 # 主入口
 # ------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="晶圆图像质量批量分析工具",
@@ -117,11 +123,17 @@ def main() -> None:
             → 自动扫描 data/ 下所有子文件夹，每个子文件夹对应输出到 output/<子文件夹名>/
         """,
     )
-    parser.add_argument("input_dir",  type=Path, help="输入父目录，包含若干晶圆子文件夹（如 data/）")
-    parser.add_argument("output_dir", type=Path, help="输出父目录，各子文件夹结果按名称对应存入（如 output/）")
+    parser.add_argument(
+        "input_dir", type=Path, help="输入父目录，包含若干晶圆子文件夹（如 data/）"
+    )
+    parser.add_argument(
+        "output_dir",
+        type=Path,
+        help="输出父目录，各子文件夹结果按名称对应存入（如 output/）",
+    )
     args = parser.parse_args()
 
-    input_root: Path  = args.input_dir.resolve()
+    input_root: Path = args.input_dir.resolve()
     output_root: Path = args.output_dir.resolve()
 
     if not input_root.exists():
@@ -144,7 +156,10 @@ def main() -> None:
         try:
             analyze_one(sub_dir, output_sub)
         except Exception as exception:
-            logger.error(f"[{sub_dir.name}] 分析过程中出现异常，已跳过：{exception}", exc_info=True)
+            logger.error(
+                f"[{sub_dir.name}] 分析过程中出现异常，已跳过：{exception}",
+                exc_info=True,
+            )
 
     logger.info(f"🎉 所有 {len(sub_dirs)} 个目录分析完成！输出位于：{output_root}")
 

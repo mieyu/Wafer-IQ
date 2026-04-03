@@ -29,7 +29,7 @@ class ImageQualityScorer:
         scores: list[float] = []
         for brightness in df["valid_mean"].tolist():
             sigma = 60 if brightness >= 128 else 40
-            score = 100 * np.exp(-((brightness - 128) ** 2) / (2 * sigma ** 2))
+            score = 100 * np.exp(-((brightness - 128) ** 2) / (2 * sigma**2))
             scores.append(float(score))
         return float(np.mean(scores)) if scores else 0.0
 
@@ -69,7 +69,9 @@ class ImageQualityScorer:
         return float(fft_ratio * 100.0)
 
     @staticmethod
-    def calculate_uniformity_score(df: pd.DataFrame, sharpness_metrics_names: list[str]) -> float:
+    def calculate_uniformity_score(
+        df: pd.DataFrame, sharpness_metrics_names: list[str]
+    ) -> float:
         """根据所有清晰度算法指标的变异系数(CV)计算整体均匀度得分，CV越小均匀度越高。
 
         Args:
@@ -94,7 +96,9 @@ class ImageQualityScorer:
     # 3. 位移偏移评分
     # ==================================================================
     @staticmethod
-    def calculate_shift_pair_score(delta_x: float, delta_y: float, response: float) -> tuple[float, float, float]:
+    def calculate_shift_pair_score(
+        delta_x: float, delta_y: float, response: float
+    ) -> tuple[float, float, float]:
         """单对图像拼缝的偏移评分。
 
         Args:
@@ -108,10 +112,11 @@ class ImageQualityScorer:
                 - score_delta_x (float): X方向得分。
                 - score_delta_y (float): Y方向得分。
         """
+
         def _score(value: float) -> float:
             # 使用线性插值将位移量转化为 0-100 的得分（位移 0.1以内满分，超 5.0 得0分）
             return float(np.clip((abs(value) - 5.0) / (0.10 - 5.0) * 100.0, 0.0, 100.0))
-        
+
         score_delta_x, score_delta_y = _score(delta_x), _score(delta_y)
         total_score = (score_delta_x + score_delta_y) / 2.0
         # 如果相位相关响应置信度过低，则总得分打85折
@@ -124,7 +129,9 @@ class ImageQualityScorer:
     # 4. 畸变评分
     # ==================================================================
     @staticmethod
-    def calculate_distortion_pair_score(rotation_degree: float, shear: float) -> tuple[float, float, float]:
+    def calculate_distortion_pair_score(
+        rotation_degree: float, shear: float
+    ) -> tuple[float, float, float]:
         """单对图像畸变量打分。
 
         Args:
@@ -138,10 +145,14 @@ class ImageQualityScorer:
                 - score_shear (float): 切变得分。
         """
         # 旋转评分 (<=0.01满分, >=1.0零分)
-        score_rotation = float(np.clip((abs(rotation_degree) - 1.0) / (0.01 - 1.0) * 100.0, 0.0, 100.0))
+        score_rotation = float(
+            np.clip((abs(rotation_degree) - 1.0) / (0.01 - 1.0) * 100.0, 0.0, 100.0)
+        )
         # 剪切评分 (<=0.001满分, >=0.05零分)
-        score_shear = float(np.clip((abs(shear) - 0.05) / (0.001 - 0.05) * 100.0, 0.0, 100.0))
-        
+        score_shear = float(
+            np.clip((abs(shear) - 0.05) / (0.001 - 0.05) * 100.0, 0.0, 100.0)
+        )
+
         # 综合考虑：旋转占据主要影响(60%)，剪切占辅影响(40%)
         distortion_score = round(score_rotation * 0.6 + score_shear * 0.4, 2)
         return distortion_score, round(score_rotation, 2), round(score_shear, 2)
