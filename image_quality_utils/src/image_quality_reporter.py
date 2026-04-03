@@ -11,6 +11,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns  # type: ignore[import-untyped]
 
 # 清晰度指标的中文显示名称
 SHARPNESS_METRIC_CN = {
@@ -21,28 +22,34 @@ SHARPNESS_METRIC_CN = {
 }
 
 
-class _ReportBuilder:
+class ReportBuilder:
     WIDTH = 60
 
-    def __init__(self, title: str) -> None:
+    def __init__(
+        self, title: str, main_score: float | None = None, score_label: str = "综合评分"
+    ) -> None:
         self._lines: list[str] = []
-        self.divider()
+        if main_score is not None:
+            self._lines.append(f"★★★  {score_label} : {main_score:.2f} / 100  ★★★")
+            self.divider()
+        else:
+            self.divider()
         self._lines.append(f"  {title}")
         self.divider()
 
-    def divider(self) -> "_ReportBuilder":
+    def divider(self) -> "ReportBuilder":
         self._lines.append("=" * self.WIDTH)
         return self
 
-    def blank(self) -> "_ReportBuilder":
+    def blank(self) -> "ReportBuilder":
         self._lines.append("")
         return self
 
-    def section(self, title: str) -> "_ReportBuilder":
+    def section(self, title: str) -> "ReportBuilder":
         self._lines.append(f"  ── {title} ──")
         return self
 
-    def field(self, label: str, value: str) -> "_ReportBuilder":
+    def field(self, label: str, value: str) -> "ReportBuilder":
         self._lines.append(f"  {label:<18}: {value}")
         return self
 
@@ -102,11 +109,12 @@ class ImageQualityReporter:
         fmt: str = "+.2f",
         suspicious_grid: np.ndarray | None = None,
         origin: str = "lower",
+        show_values: bool = False,
     ) -> None:
         """
         用暗色主题绘制热力图，对齐 wafer_shiftCheck 风格：
           - 深色背景 / 白色文字
-          - 图块数 ≤ 2000 时每格显示数值
+          - show_values=True 且格子数 ≤ 2000 时每格显示数值
           - suspicious_grid 为 True 的格子用紫色框高亮
           - colorbar 使用白色标签
         """
@@ -133,8 +141,8 @@ class ImageQualityReporter:
         cbar.set_label(cbar_label, color="white", fontsize=9)
         cbar.ax.tick_params(colors="white")
 
-        # 数值标注（格子少时才显示，避免太密集）
-        if grid_rows * grid_cols <= 2000:
+        # 数值标注（仅当 show_values=True 且格子数 ≤ 2000 时才显示）
+        if show_values and grid_rows * grid_cols <= 2000:
             for ri in range(grid_rows):
                 for ci in range(grid_cols):
                     val = grid[ri, ci]
@@ -236,7 +244,11 @@ class ImageQualityReporter:
         return path
 
     def build_brightness_report(self, metrics: dict) -> str:
-        builder = _ReportBuilder("晶圆亮度质量评估报告")
+        builder = ReportBuilder(
+            "晶圆亮度分析 — 汇总统计报告",
+            main_score=metrics.get("score_visual", 0),
+            score_label="亮度视觉得分",
+        )
 
         # 质量评分
         builder.section("质量评分")
@@ -394,7 +406,11 @@ class ImageQualityReporter:
         return path
 
     def build_sharpness_report(self, metrics: dict) -> str:
-        builder = _ReportBuilder("晶圆清晰度分析 — 汇总统计报告")
+        builder = ReportBuilder(
+            "晶圆清晰度分析 — 汇总统计报告",
+            main_score=metrics.get("sharpness_score", 0),
+            score_label="整体清晰度评分",
+        )
 
         # 有效图块总数
         builder.section("数据集信息")
@@ -453,8 +469,8 @@ class ImageQualityReporter:
         out_dir = self._ensure_dir(self.shift_dir)
 
         for col, label in [
-            ("shift_dx", "X方向偏移量(Δx)"),
-            ("shift_dy", "Y方向偏移量(Δy)"),
+            ("shift_delta_x", "X方向偏移量(Δx)"),
+            ("shift_delta_y", "Y方向偏移量(Δy)"),
         ]:
             if col not in stats_df.columns:
                 continue
@@ -501,6 +517,7 @@ class ImageQualityReporter:
                 cbar_label="px",
                 fmt="+.2f",
                 suspicious_grid=suspicious_grid,
+                show_values=True,
             )
             fig.tight_layout()
 
@@ -515,11 +532,11 @@ class ImageQualityReporter:
 
     def save_shift_histograms(self, stats_df: pd.DataFrame, show: bool = False) -> Path:
         """Δx / Δy 分布直方图（2×1 布局）。"""
-        valid = stats_df.dropna(subset=["shift_dx", "shift_dy"])
+        valid = stats_df.dropna(subset=["shift_delta_x", "shift_delta_y"])
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle("晶圆位移偏移 — Δx / Δy 分布", fontsize=14)
         for ax, col, label in zip(
-            axes, ["shift_dx", "shift_dy"], ["Δx (px)", "Δy (px)"]
+            axes, ["shift_delta_x", "shift_delta_y"], ["Δx (px)", "Δy (px)"]
         ):
             vals = valid[col].to_numpy()
             ax.hist(vals, bins=50, color="#4C9BE8", edgecolor="white", linewidth=0.5)
@@ -550,7 +567,11 @@ class ImageQualityReporter:
         return path
 
     def build_shift_report(self, metrics: dict) -> str:
-        builder = _ReportBuilder("晶圆位移偏移检测 — 汇总统计报告")
+        builder = ReportBuilder(
+            "晶圆位移偏移检测 — 汇总统计报告",
+            main_score=metrics.get("shift_score_mean", 0),
+            score_label="平均偏移评分",
+        )
 
         # 数据集信息
         builder.section("数据集信息")
@@ -706,7 +727,11 @@ class ImageQualityReporter:
         return path
 
     def build_distortion_report(self, metrics: dict) -> str:
-        builder = _ReportBuilder("晶圆畸变检测 — 汇总统计报告")
+        builder = ReportBuilder(
+            "晶圆畸变检测 — 汇总统计报告",
+            main_score=metrics.get("distortion_score_mean", 0),
+            score_label="平均畸变评分",
+        )
 
         # 数据集信息
         builder.section("数据集信息")
